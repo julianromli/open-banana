@@ -1,12 +1,13 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Dithering } from "@paper-design/shaders-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useMobile } from "@/hooks/use-mobile"
+import { useToast } from "@/hooks/use-toast" // Assuming useToast is available and imported
 
 interface GeneratedImage {
   url: string
@@ -125,12 +126,14 @@ const randomPrompts = [
 export function ImageCombiner() {
   const isMobile = useMobile()
 
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
+  const [toastState, setToastState] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const [imageLoaded, setImageLoaded] = useState(false)
-  const [prompt, setPrompt] = useState("A beautiful landscape with mountains and a lake at sunset")
+  const [prompt, setPrompt] = useState("")
+  const { toast } = useToast() // This is the one from the hook
   const [isDragOver, setIsDragOver] = useState(false)
   const [showFullscreen, setShowFullscreen] = useState(false)
   const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string>("")
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const [image1, setImage1] = useState<File | null>(null)
   const [image1Preview, setImage1Preview] = useState<string>("")
@@ -232,8 +235,8 @@ export function ImageCombiner() {
   }, [selectedGenerationId, selectedGeneration?.imageUrl])
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
+    setToastState({ message, type })
+    setTimeout(() => setToastState(null), 3000)
   }
 
   const validateImageFormat = (file: File): boolean => {
@@ -1018,7 +1021,7 @@ export function ImageCombiner() {
   const copyImageToClipboard = async () => {
     if (generatedImage) {
       try {
-        setToast({ message: "Copying image...", type: "success" })
+        setToastState({ message: "Copying image...", type: "success" })
 
         // Ensure window is focused
         window.focus()
@@ -1041,14 +1044,14 @@ export function ImageCombiner() {
         const clipboardItem = new ClipboardItem({ "image/png": blob })
         await navigator.clipboard.write([clipboardItem])
 
-        setToast({ message: "Image copied to clipboard!", type: "success" })
-        setTimeout(() => setToast(null), 2000)
+        setToastState({ message: "Image copied to clipboard!", type: "success" })
+        setTimeout(() => setToastState(null), 2000)
       } catch (error) {
         console.error("Error copying image:", error)
         if (error instanceof Error && error.message.includes("not focused")) {
-          setToast({ message: "Please click on the page first, then try copying again", type: "error" })
+          setToastState({ message: "Please click on the page first, then try copying again", type: "error" })
         } else {
-          setToast({ message: "Failed to copy image to clipboard", type: "error" })
+          setToastState({ message: "Failed to copy image to clipboard", type: "error" })
         }
       }
     }
@@ -1143,6 +1146,18 @@ export function ImageCombiner() {
     }
   }
 
+  const autoResizeTextarea = () => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = "auto"
+      textarea.style.height = `${textarea.scrollHeight}px`
+    }
+  }
+
+  useEffect(() => {
+    autoResizeTextarea()
+  }, [prompt])
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault()
@@ -1169,16 +1184,16 @@ export function ImageCombiner() {
       onDragOver={handleGlobalDragOver}
       onDrop={handleGlobalDrop}
     >
-      {toast && (
+      {toastState && (
         <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-top-2 duration-300 select-none">
           <div
             className={cn(
               "bg-black/90 backdrop-blur-sm border rounded-lg p-4 shadow-lg max-w-sm",
-              toast.type === "success" ? "border-green-500/50 text-green-100" : "border-red-500/50 text-red-100",
+              toastState.type === "success" ? "border-green-500/50 text-green-100" : "border-red-500/50 text-red-100",
             )}
           >
             <div className="flex items-center gap-3">
-              {toast.type === "success" ? (
+              {toastState.type === "success" ? (
                 <svg
                   className="w-5 h-5 text-green-400 flex-shrink-0"
                   fill="none"
@@ -1202,7 +1217,7 @@ export function ImageCombiner() {
                   />
                 </svg>
               )}
-              <p className="text-sm font-medium">{toast.message}</p>
+              <p className="text-sm font-medium">{toastState.message}</p>
             </div>
           </div>
         </div>
@@ -1354,7 +1369,7 @@ export function ImageCombiner() {
             >
               {/* Input Section */}
               <div className="space-y-4 md:space-y-8">
-                <div className="flex flex-nowrap items-center justify-between gap-1 md:gap-2 select-none">
+                <div className="flex items-center justify-between gap-1 md:gap-2 select-none">
                   <h3 className="text-sm md:text-lg font-semibold flex items-center gap-1 md:gap-2 text-white flex-shrink-0">
                     <svg
                       className="hidden md:block w-4 h-4 lg:w-5 lg:h-5"
@@ -1409,6 +1424,7 @@ export function ImageCombiner() {
                     </Button>
                   </div>
                   <textarea
+                    ref={textareaRef}
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -1417,7 +1433,7 @@ export function ImageCombiner() {
                         ? "Describe the image you want to generate..."
                         : "Describe how to edit the image..."
                     }
-                    className="w-full h-16 md:h-32 p-2 md:p-4 bg-black/50 border border-gray-600 rounded resize-none focus:outline-none focus:ring-2 focus:ring-white text-white text-xs md:text-base select-text"
+                    className="w-full min-h-16 md:min-h-32 p-2 md:p-4 bg-black/50 border border-gray-600 rounded resize-none focus:outline-none focus:ring-2 focus:ring-white text-white text-xs md:text-base select-text overflow-hidden"
                     style={{
                       fontSize: "16px", // Prevents zoom on iOS Safari
                       WebkitUserSelect: "text",

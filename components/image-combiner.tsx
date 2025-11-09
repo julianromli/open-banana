@@ -8,6 +8,7 @@ import { Dithering } from "@paper-design/shaders-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useMobile } from "@/hooks/use-mobile"
 import { useToast } from "@/hooks/use-toast" // Assuming useToast is available and imported
+import { Sparkles, RotateCcw, Loader2 } from "lucide-react"
 
 interface GeneratedImage {
   url: string
@@ -131,7 +132,10 @@ export function ImageCombiner() {
   const [toastState, setToastState] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const [imageLoaded, setImageLoaded] = useState(false)
   const [prompt, setPrompt] = useState("")
-  const { toast } = useToast() // This is the one from the hook
+  const [isImprovingPrompt, setIsImprovingPrompt] = useState(false)
+  const [originalPrompt, setOriginalPrompt] = useState("")
+  const [improvedPrompt, setImprovedPrompt] = useState("")
+  const { toast } = useToast()
   const [isDragOver, setIsDragOver] = useState(false)
   const [showFullscreen, setShowFullscreen] = useState(false)
   const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string>("")
@@ -749,6 +753,102 @@ export function ImageCombiner() {
     showToast("Generation cancelled", "error")
   }
 
+  const improvePrompt = async () => {
+    if (prompt.trim().length < 3) {
+      toast({
+        title: "Prompt too short",
+        description: "Please enter at least 3 characters",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Removed character limit check
+    // if (prompt.trim().length > 500) {
+    //   toast({
+    //     title: "Prompt too long",
+    //     description: "Please keep your prompt under 500 characters",
+    //     variant: "destructive",
+    //   })
+    //   return
+    // }
+
+    setIsImprovingPrompt(true)
+    setOriginalPrompt(prompt) // Save original for undo
+
+    try {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      }
+
+      if (userApiKey) {
+        headers["x-api-key"] = userApiKey
+      }
+
+      const response = await fetch("/api/improve-prompt", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          mode: currentMode,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.details || data.error || "Failed to improve prompt")
+      }
+
+      // Replace prompt with improved version
+      setPrompt(data.improvedPrompt)
+      setImprovedPrompt(data.improvedPrompt)
+
+      toast({
+        title: "Prompt improved",
+      })
+    } catch (error: any) {
+      console.error("[v0] Error improving prompt:", error)
+      toast({
+        title: "Failed to improve prompt",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      })
+    } finally {
+      setIsImprovingPrompt(false)
+    }
+  }
+
+  const undoImprovement = () => {
+    setPrompt(originalPrompt)
+    setOriginalPrompt("")
+    setImprovedPrompt("")
+    toast({
+      title: "Restored original prompt",
+    })
+  }
+
+  useEffect(() => {
+    if (originalPrompt && improvedPrompt && prompt !== improvedPrompt) {
+      setOriginalPrompt("")
+      setImprovedPrompt("")
+    }
+  }, [prompt, improvedPrompt, originalPrompt])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "I") {
+        e.preventDefault()
+        if (canImprove) {
+          improvePrompt()
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [prompt, isImprovingPrompt, isLoading])
+
   const generateImage = async () => {
     if (currentMode === "image-editing" && !useUrls && !image1) return
     if (currentMode === "image-editing" && useUrls && !image1Url) return
@@ -1178,6 +1278,12 @@ export function ImageCombiner() {
     }
   }
 
+  // Removed character limit logic from canImprove
+  const canImprove = prompt.trim().length >= 3 && !isImprovingPrompt && !isLoading
+  // const charCount = prompt.length
+  // const charLimit = 500
+  // const charCountColor = charCount > 490 ? "text-red-400" : charCount > 400 ? "text-yellow-400" : "text-gray-500"
+
   return (
     <div
       className="bg-background min-h-screen flex items-center justify-center select-none"
@@ -1436,33 +1542,62 @@ export function ImageCombiner() {
                     <label className="text-xs md:text-sm font-medium text-gray-300">
                       {currentMode === "text-to-image" ? "Describe your image" : "Describe how to edit the image..."}
                     </label>
-                    <Button
-                      onClick={() => setPrompt("")}
-                      disabled={!prompt.trim()}
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-3 text-xs bg-transparent border-gray-600 text-white hover:bg-gray-700 disabled:opacity-50"
-                    >
-                      Clear
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={improvePrompt}
+                        disabled={!canImprove}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-3 text-xs bg-transparent border-gray-600 text-white hover:bg-gray-700 disabled:opacity-50"
+                        title="Improve prompt with AI (Ctrl+Shift+I)"
+                      >
+                        {isImprovingPrompt ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <Sparkles className="h-3 w-3 mr-1" />
+                        )}
+                        Improve
+                      </Button>
+                      <Button
+                        onClick={() => setPrompt("")}
+                        disabled={!prompt.trim()}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-3 text-xs bg-transparent border-gray-600 text-white hover:bg-gray-700 disabled:opacity-50"
+                      >
+                        Clear
+                      </Button>
+                    </div>
                   </div>
-                  <textarea
-                    ref={textareaRef}
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                      currentMode === "text-to-image"
-                        ? "Describe the image you want to generate..."
-                        : "Describe how to edit the image..."
-                    }
-                    className="w-full min-h-16 md:min-h-32 p-2 md:p-4 bg-black/50 border border-gray-600 rounded resize-none focus:outline-none focus:ring-2 focus:ring-white text-white text-xs md:text-base select-text overflow-hidden"
-                    style={{
-                      fontSize: "16px", // Prevents zoom on iOS Safari
-                      WebkitUserSelect: "text",
-                      userSelect: "text",
-                    }}
-                  />
+                  <div className="relative">
+                    <textarea
+                      ref={textareaRef}
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder={
+                        currentMode === "text-to-image"
+                          ? "Describe the image you want to generate..."
+                          : "Describe how to edit the image..."
+                      }
+                      className="w-full min-h-16 md:min-h-32 p-2 md:p-4 bg-black/50 border border-gray-600 rounded resize-none focus:outline-none focus:ring-2 focus:ring-white text-white text-xs md:text-base select-text overflow-hidden"
+                      style={{
+                        fontSize: "16px", // Prevents zoom on iOS Safari
+                        WebkitUserSelect: "text",
+                        userSelect: "text",
+                        paddingBottom: originalPrompt ? "2.5rem" : "0.5rem",
+                      }}
+                    />
+                    {originalPrompt && (
+                      <button
+                        onClick={undoImprovement}
+                        className="absolute bottom-2 left-2 p-1.5 bg-black/70 hover:bg-black/90 border border-gray-600 rounded transition-all text-white"
+                        title="Restore original prompt"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-3 md:space-y-6">
@@ -1920,8 +2055,34 @@ export function ImageCombiner() {
                       </button>
                     </div>
                     <div className="mt-2 md:mt-4 p-2 md:p-3 bg-black/50 border border-gray-600 rounded">
-                      <p className="text-xs md:text-sm text-gray-300">
-                        <span className="font-semibold text-white">Prompt:</span> {generatedImage.prompt}
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <span className="text-xs md:text-sm font-semibold text-white">Prompt:</span>
+                        {generatedImage.prompt.length > 200 && (
+                          <button
+                            onClick={() => {
+                              const promptId = `prompt-${generatedImage.id}`
+                              const element = document.getElementById(promptId)
+                              if (element) {
+                                element.classList.toggle("line-clamp-3")
+                              }
+                            }}
+                            className="text-xs text-gray-400 hover:text-white transition-colors flex-shrink-0"
+                          >
+                            Show{" "}
+                            {document.getElementById(`prompt-${generatedImage.id}`)?.classList.contains("line-clamp-3")
+                              ? "more"
+                              : "less"}
+                          </button>
+                        )}
+                      </div>
+                      <p
+                        id={`prompt-${generatedImage.id}`}
+                        className={cn(
+                          "text-xs md:text-sm text-gray-300",
+                          generatedImage.prompt.length > 200 && "line-clamp-3",
+                        )}
+                      >
+                        {generatedImage.prompt}
                       </p>
                     </div>
                   </div>

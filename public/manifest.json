@@ -1,0 +1,32 @@
+{
+  "name": "Open Banana - Free AI Image Generator",
+  "short_name": "Open Banana",
+  "description": "Generate and edit stunning images with AI. Powered by Gemini 2.5 Flash.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNkrTSPMxqrLXWoAOxHZEIn5u8KwidYCeQ4cFR",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNkrTSPMxqrLXWoAOxHZEIn5u8KwidYCeQ4cFR",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["graphics", "design", "utilities"],
+  "screenshots": [
+    {
+      "src": "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe",
+      "sizes": "1200x630",
+      "type": "image/jpeg"
+    }
+  ]
+}

@@ -1990,7 +1990,7 @@ export function ImageCombiner() {
                 rel="noopener noreferrer"
                 className="text-xs md:text-sm text-gray-400 hover:text-white transition-colors duration-200 flex items-center gap-2"
               >
-                <span>feedback? send me a dm!</span>
+                <span>follow @faizintifada on threads</span>
                 <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"

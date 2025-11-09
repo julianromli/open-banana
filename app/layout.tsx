@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   description: "Created with v0",
   generator: "v0.app",
   icons: {
-    icon: "/favicon.ico",
+    icon: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNkrTSPMxqrLXWoAOxHZEIn5u8KwidYCeQ4cFR",
   },
 }
 

@@ -1101,12 +1101,19 @@ export function ImageCombiner() {
   const downloadImage = async () => {
     if (generatedImage) {
       try {
+        const firstWord = generatedImage.prompt.trim().split(/\s+/)[0] || "image"
+        const slug = firstWord
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+        const filename = `openbanana-${slug}.png`
+
         const response = await fetch(generatedImage.url)
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement("a")
         link.href = url
-        link.download = `nano-banana-starter-${currentMode}-result.png`
+        link.download = filename // Use generated filename instead of hardcoded one
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)

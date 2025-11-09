@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 - Lighting and color descriptions
 - Specific descriptors for clarity
 
-Keep it balanced between artistic and technical aspects. Return only the enhanced prompt in under 200 words. Do not add explanations or extra text.
+Keep it balanced between artistic and technical aspects. Return only the enhanced prompt in under 700 characters. Do not add explanations or extra text.
 
 Original prompt: ${trimmedPrompt}`
 
@@ -82,10 +82,10 @@ Original prompt: ${trimmedPrompt}`
 
     let improvedPrompt = candidate.content.parts[0].text.trim()
 
-    // Truncate if too long (max 1000 chars output)
-    if (improvedPrompt.length > 1000) {
-      improvedPrompt = improvedPrompt.substring(0, 997) + "..."
-      console.log("[v0] Improve Prompt API: Truncated output to 1000 chars")
+    // Truncate if too long (max 700 chars output)
+    if (improvedPrompt.length > 700) {
+      improvedPrompt = improvedPrompt.substring(0, 697) + "..."
+      console.log("[v0] Improve Prompt API: Truncated output to 700 chars")
     }
 
     console.log("[v0] Improve Prompt API: Improved prompt length:", improvedPrompt.length)

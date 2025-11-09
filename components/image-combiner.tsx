@@ -8,7 +8,8 @@ import { Dithering } from "@paper-design/shaders-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useMobile } from "@/hooks/use-mobile"
 import { useToast } from "@/hooks/use-toast" // Assuming useToast is available and imported
-import { Sparkles, RotateCcw, Loader2 } from "lucide-react"
+import { Sparkles, RotateCcw, Loader2, Copy } from "lucide-react" // Added Copy icon
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog" // Added Dialog components
 
 interface GeneratedImage {
   url: string
@@ -156,6 +157,9 @@ export function ImageCombiner() {
 
   const [userApiKey, setUserApiKey] = useState<string>("")
   const [showApiKeyInput, setShowApiKeyInput] = useState(false)
+
+  const [showPromptModal, setShowPromptModal] = useState(false)
+  const [modalPromptText, setModalPromptText] = useState("")
 
   // Remove these old states as they're replaced by generations array
   // const [generatedImage, setGeneratedImage] = useState<GeneratedImage | null>(null)
@@ -1284,6 +1288,22 @@ export function ImageCombiner() {
   // const charLimit = 500
   // const charCountColor = charCount > 490 ? "text-red-400" : charCount > 400 ? "text-yellow-400" : "text-gray-500"
 
+  const copyPromptToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast({
+        title: "Copied!",
+        description: "Prompt copied to clipboard",
+      })
+    } catch (error) {
+      toast({
+        title: "Copy failed",
+        description: "Could not copy to clipboard",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <div
       className="bg-background min-h-screen flex items-center justify-center select-none"
@@ -1518,7 +1538,7 @@ export function ImageCombiner() {
                       >
                         <SelectValue placeholder="1:1" />
                       </SelectTrigger>
-                      <SelectContent className="bg-black/95 border-gray-600 text-white">
+                      <SelectContent className="bg-black/95 border-gray-600 text-white z-50">
                         {availableAspectRatios.map((option) => (
                           <SelectItem key={option.value} value={option.value} className="text-xs md:text-sm">
                             <div className="flex items-center gap-2">
@@ -2054,37 +2074,54 @@ export function ImageCombiner() {
                         </svg>
                       </button>
                     </div>
-                    <div className="mt-2 md:mt-4 p-2 md:p-3 bg-black/50 border border-gray-600 rounded">
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <span className="text-xs md:text-sm font-semibold text-white">Prompt:</span>
-                        {generatedImage.prompt.length > 200 && (
-                          <button
-                            onClick={() => {
-                              const promptId = `prompt-${generatedImage.id}`
-                              const element = document.getElementById(promptId)
-                              if (element) {
-                                element.classList.toggle("line-clamp-3")
-                              }
-                            }}
-                            className="text-xs text-gray-400 hover:text-white transition-colors flex-shrink-0"
-                          >
-                            Show{" "}
-                            {document.getElementById(`prompt-${generatedImage.id}`)?.classList.contains("line-clamp-3")
-                              ? "more"
-                              : "less"}
-                          </button>
-                        )}
-                      </div>
-                      <p
-                        id={`prompt-${generatedImage.id}`}
-                        className={cn(
-                          "text-xs md:text-sm text-gray-300",
-                          generatedImage.prompt.length > 200 && "line-clamp-3",
-                        )}
-                      >
-                        {generatedImage.prompt}
-                      </p>
-                    </div>
+                    {generatedImage && (
+                      <>
+                        <div className="mt-2 md:mt-4 mb-12 md:mb-8 p-3 md:p-3 bg-black/50 border border-gray-600 rounded">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <span className="text-xs md:text-sm font-semibold text-white">Prompt:</span>
+                            {generatedImage.prompt.length > 200 && (
+                              <button
+                                onClick={() => {
+                                  setModalPromptText(generatedImage.prompt)
+                                  setShowPromptModal(true)
+                                }}
+                                className="text-xs text-gray-400 hover:text-white transition-colors flex-shrink-0"
+                              >
+                                Show more
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-xs md:text-sm text-gray-300 break-words whitespace-pre-wrap line-clamp-3">
+                            {generatedImage.prompt}
+                          </p>
+                        </div>
+
+                        <Dialog open={showPromptModal} onOpenChange={setShowPromptModal}>
+                          <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+                            <DialogHeader>
+                              <DialogTitle>Full Prompt</DialogTitle>
+                              <DialogDescription>Complete image generation prompt</DialogDescription>
+                            </DialogHeader>
+                            <div className="flex-1 overflow-y-auto">
+                              <p className="text-sm text-foreground whitespace-pre-wrap break-words">
+                                {modalPromptText}
+                              </p>
+                            </div>
+                            <div className="flex justify-end gap-2 pt-4 border-t">
+                              <Button
+                                variant="outline"
+                                onClick={() => copyPromptToClipboard(modalPromptText)}
+                                className="gap-2"
+                              >
+                                <Copy className="h-4 w-4" />
+                                Copy
+                              </Button>
+                              <Button onClick={() => setShowPromptModal(false)}>Close</Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-6 select-none">
@@ -2106,8 +2143,8 @@ export function ImageCombiner() {
               </div>
 
               {generations.length > 0 && (
-                <div className="border-t border-gray-600/50 pt-4 flex flex-col">
-                  <h4 className="text-xs md:text-sm font-medium text-gray-400 mb-2">History</h4>
+                <div className="border-t border-gray-600/50 pt-8 mt-12 md:pt-6 md:mt-8 flex flex-col">
+                  <h4 className="text-xs md:text-sm font-medium text-gray-400 mb-3 md:mb-2">History</h4>
                   <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent flex-1 items-end mb-1 mt-4">
                     {generations.map((gen, index) => (
                       <button
@@ -2179,7 +2216,7 @@ export function ImageCombiner() {
 
           <div
             className={cn(
-              "mt-4 md:mt-8 pt-3 md:pt-6 border-t border-gray-600/50 select-none",
+              "mt-4 md:mt-8 pt-6 md:pt-8 border-t border-gray-600/50 select-none",
               mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4",
             )}
           >

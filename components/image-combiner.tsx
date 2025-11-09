@@ -1412,7 +1412,7 @@ export function ImageCombiner() {
           >
             <div className="flex items-center justify-between">
               <h1 className="text-lg md:text-2xl font-bold text-white select-none">
-                Open Banana
+                OPEN BANANA
                 <span className="sr-only"> - Free AI Image Generator</span>
               </h1>
               <div className="flex items-center gap-2">

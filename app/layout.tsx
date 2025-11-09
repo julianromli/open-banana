@@ -24,7 +24,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "v0 | Open Banana",
+  title: "Open Banana",
   description: "Created with v0",
   generator: "v0.app",
   icons: {

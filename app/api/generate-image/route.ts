@@ -297,38 +297,99 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error("[v0] API: Error generating image:", error)
-    console.error("[v0] API: Error type:", typeof error)
-    console.error("[v0] API: Error constructor:", error?.constructor?.name)
 
-    // Try to log the full error object structure
-    try {
-      console.error("[v0] API: Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2))
-    } catch (e) {
-      console.error("[v0] API: Could not stringify error")
-    }
+    let statusCode = 500
+    let errorType = "UNKNOWN_ERROR"
+    let userMessage = "Failed to generate image"
+    let details = ""
 
-    // Log specific error properties
     if (error && typeof error === "object") {
-      console.error("[v0] API: Error keys:", Object.keys(error))
-      console.error("[v0] API: Error message:", (error as any).message)
-      console.error("[v0] API: Error status:", (error as any).status)
-      console.error("[v0] API: Error statusCode:", (error as any).statusCode)
-      console.error("[v0] API: Error body:", (error as any).body)
-      console.error("[v0] API: Error response:", (error as any).response)
-    }
+      const err = error as any
 
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
-    const errorDetails =
-      error && typeof error === "object"
-        ? (error as any).body || (error as any).message || JSON.stringify(error)
-        : String(error)
+      // API Key errors
+      if (err.message?.includes("API_KEY_INVALID") || err.message?.includes("API key not valid")) {
+        statusCode = 401
+        errorType = "INVALID_API_KEY"
+        userMessage = "Invalid API key"
+        details = "The provided API key is not valid. Please check your API key and try again."
+      } else if (err.message?.includes("quota") || err.message?.includes("QUOTA_EXCEEDED")) {
+        statusCode = 429
+        errorType = "QUOTA_EXCEEDED"
+        userMessage = "API quota exceeded"
+        details = "You've reached your API quota limit. Please try again later or upgrade your plan."
+      } else if (err.message?.includes("RESOURCE_EXHAUSTED")) {
+        statusCode = 429
+        errorType = "RESOURCE_EXHAUSTED"
+        userMessage = "Resource limit reached"
+        details = "The API is currently overloaded. Please try again in a moment."
+      }
+      // Content policy errors
+      else if (
+        err.message?.includes("SAFETY") ||
+        err.message?.includes("content policy") ||
+        err.message?.includes("blocked")
+      ) {
+        statusCode = 400
+        errorType = "CONTENT_POLICY_VIOLATION"
+        userMessage = "Content policy violation"
+        details = "Your prompt may contain content that violates our policies. Please try a different prompt."
+      }
+      // Image format/size errors
+      else if (err.message?.includes("image") && (err.message?.includes("format") || err.message?.includes("size"))) {
+        statusCode = 400
+        errorType = "IMAGE_ERROR"
+        userMessage = "Image format or size error"
+        details = "Please ensure your images are in a supported format (JPEG, PNG, WebP) and under 20MB."
+      }
+      // Network/timeout errors
+      else if (err.message?.includes("timeout") || err.message?.includes("DEADLINE_EXCEEDED")) {
+        statusCode = 504
+        errorType = "TIMEOUT"
+        userMessage = "Request timed out"
+        details = "The request took too long to complete. Please try again with a simpler prompt or smaller images."
+      } else if (
+        err.message?.includes("network") ||
+        err.message?.includes("ENOTFOUND") ||
+        err.message?.includes("fetch")
+      ) {
+        statusCode = 503
+        errorType = "NETWORK_ERROR"
+        userMessage = "Network error"
+        details = "Unable to connect to the image generation service. Please check your connection and try again."
+      }
+      // Invalid request errors
+      else if (err.message?.includes("INVALID_ARGUMENT") || err.message?.includes("invalid")) {
+        statusCode = 400
+        errorType = "INVALID_REQUEST"
+        userMessage = "Invalid request"
+        details = err.message || "The request parameters are invalid. Please check your inputs and try again."
+      }
+      // Model not found/unavailable
+      else if (err.message?.includes("NOT_FOUND") || err.message?.includes("model")) {
+        statusCode = 503
+        errorType = "MODEL_UNAVAILABLE"
+        userMessage = "Service temporarily unavailable"
+        details = "The image generation model is temporarily unavailable. Please try again later."
+      }
+      // Generic error fallback
+      else {
+        details = err.message || "An unexpected error occurred. Please try again."
+      }
+
+      console.error("[v0] API: Error type:", errorType)
+      console.error("[v0] API: Error message:", err.message)
+      console.error("[v0] API: Status code:", statusCode)
+    } else {
+      details = String(error)
+    }
 
     return NextResponse.json(
       {
-        error: "Failed to generate image",
-        details: errorDetails,
+        error: userMessage,
+        details: details,
+        errorType: errorType,
       },
-      { status: 500 },
+      { status: statusCode },
     )
   }
 }

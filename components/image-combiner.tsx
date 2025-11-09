@@ -124,6 +124,14 @@ const randomPrompts = [
 
 export function ImageCombiner() {
   const isMobile = useMobile()
+
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [prompt, setPrompt] = useState("A beautiful landscape with mountains and a lake at sunset")
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [showFullscreen, setShowFullscreen] = useState(false)
+  const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string>("")
+
   const [image1, setImage1] = useState<File | null>(null)
   const [image1Preview, setImage1Preview] = useState<string>("")
   const [image1Url, setImage1Url] = useState<string>("")
@@ -154,13 +162,6 @@ export function ImageCombiner() {
       ? { url: selectedGeneration.imageUrl, prompt: selectedGeneration.prompt }
       : null
 
-  const [showAnimation, setShowAnimation] = useState(false)
-  const [imageLoaded, setImageLoaded] = useState(false)
-  const [prompt, setPrompt] = useState("A beautiful landscape with mountains and a lake at sunset")
-  const [isDragOver, setIsDragOver] = useState(false)
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
-  const [showFullscreen, setShowFullscreen] = useState(false)
-  const [fullscreenImageUrl, setFullscreenImageUrl] = useState<string>("")
   const [aspectRatio, setAspectRatio] = useState<string>("square")
   const [numVariations, setNumVariations] = useState(1)
   const [availableAspectRatios, setAvailableAspectRatios] = useState<
@@ -833,27 +834,68 @@ export function ImageCombiner() {
             signal: controller.signal,
           })
 
-          if (response.status === 429) {
-            const errorData = await response.json()
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({
+              error: "Unknown error",
+              details: `Server returned ${response.status}`,
+              errorType: "UNKNOWN_ERROR",
+            }))
+
             clearInterval(progressInterval)
+
+            let userFriendlyMessage = errorData.error || "Failed to generate image"
+            let detailedMessage = errorData.details || ""
+
+            // Handle specific error types
+            if (response.status === 429) {
+              if (errorData.resetTime) {
+                const resetDate = new Date(errorData.resetTime)
+                const resetTime = resetDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                userFriendlyMessage = `Rate limit reached. Try again after ${resetTime}`
+              } else {
+                userFriendlyMessage = "Too many requests. Please try again later or use your own API key."
+              }
+            } else if (response.status === 401) {
+              userFriendlyMessage = "Invalid API key"
+              detailedMessage = "Please check your API key and try again."
+            } else if (response.status === 403) {
+              userFriendlyMessage = "Access denied"
+              detailedMessage = "Your API key doesn't have permission to use this feature."
+            } else if (response.status === 400) {
+              // Content policy or invalid request
+              if (errorData.errorType === "CONTENT_POLICY_VIOLATION") {
+                userFriendlyMessage = "Content not allowed"
+                detailedMessage = "Your prompt may contain inappropriate content. Try a different description."
+              } else if (errorData.errorType === "IMAGE_ERROR") {
+                userFriendlyMessage = "Image format error"
+                detailedMessage = "Please use images in JPEG, PNG, or WebP format under 20MB."
+              } else {
+                userFriendlyMessage = "Invalid request"
+              }
+            } else if (response.status === 503 || response.status === 504) {
+              userFriendlyMessage = "Service temporarily unavailable"
+              detailedMessage = "The image generation service is experiencing issues. Please try again in a moment."
+            } else if (response.status >= 500) {
+              userFriendlyMessage = "Server error"
+              detailedMessage = "Something went wrong on our end. Please try again."
+            }
 
             setGenerations((prev) =>
               prev.map((gen) =>
                 gen.id === generationId
-                  ? { ...gen, status: "error" as const, error: "Rate limit exceeded", progress: 0 }
+                  ? {
+                      ...gen,
+                      status: "error" as const,
+                      error: userFriendlyMessage,
+                      progress: 0,
+                      abortController: undefined,
+                    }
                   : gen,
               ),
             )
 
-            const resetDate = new Date(errorData.resetTime)
-            const resetTime = resetDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            showToast(`Rate limit reached. Try again after ${resetTime}`, "error")
+            showToast(detailedMessage ? `${userFriendlyMessage}: ${detailedMessage}` : userFriendlyMessage, "error")
             return
-          }
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
-            throw new Error(`${errorData.error}${errorData.details ? `: ${errorData.details}` : ""}`)
           }
 
           const data = await response.json()
@@ -899,19 +941,44 @@ export function ImageCombiner() {
             return
           }
 
-          console.error("Error generating image:", error)
+          console.error("[v0] Error generating image:", error)
 
-          const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
+          let errorMessage = "Unknown error occurred"
+
+          if (error instanceof TypeError) {
+            if (error.message.includes("fetch")) {
+              errorMessage = "Network error. Please check your connection and try again."
+            } else {
+              errorMessage = "Something went wrong. Please try again."
+            }
+          } else if (error instanceof Error) {
+            // Parse common error patterns
+            if (error.message.includes("timeout")) {
+              errorMessage = "Request timed out. Try a simpler prompt or smaller images."
+            } else if (error.message.includes("network")) {
+              errorMessage = "Network error. Please check your connection."
+            } else if (error.message.includes("quota") || error.message.includes("limit")) {
+              errorMessage = "API quota exceeded. Please try again later or use your own API key."
+            } else {
+              errorMessage = error.message
+            }
+          }
 
           setGenerations((prev) =>
             prev.map((gen) =>
               gen.id === generationId && gen.status === "loading"
-                ? { ...gen, status: "error" as const, error: errorMessage, progress: 0, abortController: undefined }
+                ? {
+                    ...gen,
+                    status: "error" as const,
+                    error: errorMessage,
+                    progress: 0,
+                    abortController: undefined,
+                  }
                 : gen,
             ),
           )
 
-          showToast(`Error generating image: ${errorMessage}`, "error")
+          showToast(`Error: ${errorMessage}`, "error")
         }
       })()
 
@@ -1870,7 +1937,10 @@ export function ImageCombiner() {
                             </button>
                           </div>
                         ) : gen.status === "error" ? (
-                          <div className="absolute inset-0 bg-red-900/50 flex items-center justify-center">
+                          <div
+                            className="absolute inset-0 bg-red-900/50 flex flex-col items-center justify-center group"
+                            title={gen.error || "Failed to generate"}
+                          >
                             <svg className="w-6 h-6 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path
                                 strokeLinecap="round"
@@ -1879,6 +1949,7 @@ export function ImageCombiner() {
                                 d="M6 18L18 6M6 6l12 12"
                               />
                             </svg>
+                            <span className="text-[10px] text-red-200 mt-1 px-1 text-center">Failed</span>
                           </div>
                         ) : gen.imageUrl ? (
                           <>
@@ -1908,7 +1979,7 @@ export function ImageCombiner() {
 
           <div
             className={cn(
-              "mt-4 md:mt-8 pt-3 md:pt-6 border-t border-gray-600/50 select-none transition-all duration-700 ease-out delay-[400ms]",
+              "mt-4 md:mt-8 pt-3 md:pt-6 border-t border-gray-600/50 select-none",
               mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4",
             )}
           >

@@ -817,6 +817,25 @@ export function ImageCombiner() {
     showToast("Generation cancelled", "error")
   }
 
+  const deleteGeneration = (generationId: string, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent thumbnail click
+
+    setGenerations((prev) => {
+      const filtered = prev.filter((g) => g.id !== generationId)
+
+      // If deleting the currently selected generation, select the first remaining one
+      if (selectedGenerationId === generationId && filtered.length > 0) {
+        setSelectedGenerationId(filtered[0].id)
+      } else if (filtered.length === 0) {
+        setSelectedGenerationId(null)
+      }
+
+      return filtered
+    })
+
+    showToast("Image removed from history", "success")
+  }
+
   const improvePrompt = async () => {
     if (prompt.trim().length < 3) {
       toast({
@@ -2260,6 +2279,20 @@ export function ImageCombiner() {
                                 )
                               }}
                             />
+                            <button
+                              onClick={(e) => deleteGeneration(gen.id, e)}
+                              className="absolute top-1 right-1 p-1 bg-black/70 hover:bg-red-600/90 rounded-full transition-colors group/delete"
+                              title="Delete from history"
+                            >
+                              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
                           </>
                         ) : null}
                       </button>

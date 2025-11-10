@@ -1912,32 +1912,21 @@ export function ImageCombiner() {
                       <span className="hidden sm:inline">Copy</span>
                     </Button>
                     <Button
-                      onClick={isMobile ? openImageInNewTab : downloadImage}
+                      onClick={downloadImage}
                       variant="outline"
                       size="sm"
                       className="text-xs h-7 px-2 bg-transparent border-gray-600 text-white hover:bg-gray-700 flex items-center gap-1"
-                      title={isMobile ? "Open in new tab" : "Download"}
+                      title="Download"
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        {isMobile ? (
-                          // ExternalLink icon for mobile
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                          />
-                        ) : (
-                          // Download icon for desktop
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        )}
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                        />
                       </svg>
-                      <span className="hidden sm:inline">{isMobile ? "Open" : "Download"}</span>
+                      <span className="hidden sm:inline">Download</span>
                     </Button>
                   </div>
                 )}

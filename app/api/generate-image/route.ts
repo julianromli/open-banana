@@ -3,12 +3,17 @@ import { Redis } from "@upstash/redis"
 
 let redis: Redis | null = null
 
-function getRedis() {
+function getRedis(): Redis | null {
+  const url = process.env.UPSTASH_KV_KV_REST_API_URL || process.env.KV_REST_API_URL
+  const token = process.env.UPSTASH_KV_KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN
+
+  if (!url || !token) {
+    console.warn("[v0] API: Redis URL or token not configured")
+    return null
+  }
+
   if (!redis) {
-    redis = new Redis({
-      url: process.env.UPSTASH_KV_KV_REST_API_URL || process.env.KV_REST_API_URL!,
-      token: process.env.UPSTASH_KV_KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN!,
-    })
+    redis = new Redis({ url, token })
   }
   return redis
 }
@@ -42,6 +47,12 @@ async function checkRateLimit(ip: string): Promise<{ allowed: boolean; remaining
 
   try {
     const db = getRedis()
+
+    if (!db) {
+      console.warn("[v0] API: Redis not available, allowing request")
+      return { allowed: true, remaining: MAX_REQUESTS_PER_DAY, resetTime }
+    }
+
     // Get current count from Redis
     const count = await db.get<number>(key)
 
@@ -284,6 +295,19 @@ export async function POST(request: NextRequest) {
       throw new Error("Unexpected response format from BytePlus API")
     }
 
+    let remainingRequests = MAX_REQUESTS_PER_DAY.toString()
+    if (!bypassRateLimit && !bypassRateLimitDev) {
+      try {
+        const db = getRedis()
+        if (db) {
+          const count = await db.get<number>(`ratelimit:${ip}:${new Date().toISOString().split("T")[0]}`)
+          remainingRequests = count ? (MAX_REQUESTS_PER_DAY - count).toString() : MAX_REQUESTS_PER_DAY.toString()
+        }
+      } catch {
+        // Ignore Redis errors for rate limit headers
+      }
+    }
+
     return NextResponse.json(
       {
         url: imageUrl,
@@ -293,12 +317,7 @@ export async function POST(request: NextRequest) {
       {
         headers: {
           "X-RateLimit-Limit": MAX_REQUESTS_PER_DAY.toString(),
-          "X-RateLimit-Remaining":
-            bypassRateLimit || bypassRateLimitDev
-              ? MAX_REQUESTS_PER_DAY.toString()
-              : (
-                  await getRedis().get<number>(`ratelimit:${ip}:${new Date().toISOString().split("T")[0]}`)
-                )?.toString() || "0",
+          "X-RateLimit-Remaining": remainingRequests,
           "X-RateLimit-Reset":
             bypassRateLimit || bypassRateLimitDev ? "0" : new Date().setHours(23, 59, 59, 999).toString(),
         },

@@ -8,8 +8,8 @@ const redis = new Redis({
 
 const BYTEPLUS_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations"
 
-// Rate limiting: 2 requests per day per IP
-const MAX_REQUESTS_PER_DAY = 2
+// Rate limiting: 5 requests per day per IP
+const MAX_REQUESTS_PER_DAY = 5
 
 const ASPECT_RATIO_TO_SIZE: Record<string, string> = {
   "1:1": "2048x2048",

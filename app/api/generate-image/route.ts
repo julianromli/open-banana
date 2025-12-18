@@ -1,10 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { Redis } from "@upstash/redis"
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-})
+let redis: Redis | null = null
+
+function getRedis() {
+  if (!redis) {
+    redis = new Redis({
+      url: process.env.KV_REST_API_URL!,
+      token: process.env.KV_REST_API_TOKEN!,
+    })
+  }
+  return redis
+}
 
 const BYTEPLUS_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations"
 
@@ -34,12 +41,13 @@ async function checkRateLimit(ip: string): Promise<{ allowed: boolean; remaining
   const ttlSeconds = Math.floor((resetTime - now) / 1000)
 
   try {
+    const db = getRedis()
     // Get current count from Redis
-    const count = await redis.get<number>(key)
+    const count = await db.get<number>(key)
 
     if (count === null) {
       // First request of the day
-      await redis.set(key, 1, { ex: ttlSeconds })
+      await db.set(key, 1, { ex: ttlSeconds })
       return { allowed: true, remaining: MAX_REQUESTS_PER_DAY - 1, resetTime }
     }
 
@@ -49,7 +57,7 @@ async function checkRateLimit(ip: string): Promise<{ allowed: boolean; remaining
     }
 
     // Increment count
-    await redis.incr(key)
+    await db.incr(key)
     return { allowed: true, remaining: MAX_REQUESTS_PER_DAY - count - 1, resetTime }
   } catch (error) {
     console.error("[v0] API: Redis error:", error)
@@ -288,8 +296,9 @@ export async function POST(request: NextRequest) {
           "X-RateLimit-Remaining":
             bypassRateLimit || bypassRateLimitDev
               ? MAX_REQUESTS_PER_DAY.toString()
-              : (await redis.get<number>(`ratelimit:${ip}:${new Date().toISOString().split("T")[0]}`))?.toString() ||
-                "0",
+              : (
+                  await getRedis().get<number>(`ratelimit:${ip}:${new Date().toISOString().split("T")[0]}`)
+                )?.toString() || "0",
           "X-RateLimit-Reset":
             bypassRateLimit || bypassRateLimitDev ? "0" : new Date().setHours(23, 59, 59, 999).toString(),
         },

@@ -1510,8 +1510,7 @@ export function ImageCombiner() {
                     />
                   </svg>
                   <div className="text-xs text-gray-300 space-y-1">
-                    <p className="font-medium">Optional: Use Your Own API Key</p>
-                    <p>Add your BytePlus API key to bypass the 2 generations/day rate limit and use your own quota.</p>
+                    <p>Enter your BytePlus API key to bypass rate limits and use your own quota.</p>
                     <p className="text-gray-400">
                       Get your API key at{" "}
                       <a
@@ -1525,7 +1524,6 @@ export function ImageCombiner() {
                     </p>
                   </div>
                 </div>
-
                 <div className="flex gap-2">
                   <input
                     type="password"

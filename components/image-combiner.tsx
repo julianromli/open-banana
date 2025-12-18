@@ -1454,7 +1454,7 @@ export function ImageCombiner() {
                 OPEN BANANA
                 <span className="sr-only"> - Free AI Image Generator</span>
               </h1>
-              <div className="flex items-center gap-2">
+              <div className="hidden flex items-center gap-2">
                 <Button
                   onClick={() => window.open(RENT_API_KEY_LINK, "_blank")}
                   variant="outline"
@@ -2273,12 +2273,12 @@ export function ImageCombiner() {
           >
             <div className="flex items-center justify-center gap-2 md:gap-3 flex-wrap">
               <a
-                href="https://www.threads.com/faizintifada"
+                href="https://www.threads.com/faizntfd"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs md:text-sm text-gray-400 hover:text-white transition-colors duration-200 flex items-center gap-2"
               >
-                <span>follow @faizintifada on threads</span>
+                <span>follow Faiz Intifada on threads</span>
                 <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"

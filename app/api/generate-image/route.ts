@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { GoogleGenAI } from "@google/genai"
 import { Redis } from "@upstash/redis"
 
 const redis = new Redis({
@@ -7,8 +6,21 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN!,
 })
 
+const BYTEPLUS_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations"
+
 // Rate limiting: 2 requests per day per IP
 const MAX_REQUESTS_PER_DAY = 2
+
+const ASPECT_RATIO_TO_SIZE: Record<string, string> = {
+  "1:1": "2048x2048",
+  "2:3": "1664x2496",
+  "3:2": "2496x1664",
+  "3:4": "1728x2304",
+  "4:3": "2304x1728",
+  "9:16": "1440x2560",
+  "16:9": "2560x1440",
+  "21:9": "3024x1296",
+}
 
 async function checkRateLimit(ip: string): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
   const now = Date.now()
@@ -43,6 +55,22 @@ async function checkRateLimit(ip: string): Promise<{ allowed: boolean; remaining
     console.error("[v0] API: Redis error:", error)
     // Fallback: allow request if Redis fails
     return { allowed: true, remaining: MAX_REQUESTS_PER_DAY, resetTime }
+  }
+}
+
+async function imageToBase64DataUri(source: File | string): Promise<string> {
+  if (typeof source === "string") {
+    // It's a URL, fetch and convert
+    const response = await fetch(source)
+    const arrayBuffer = await response.arrayBuffer()
+    const base64 = Buffer.from(arrayBuffer).toString("base64")
+    const mimeType = response.headers.get("content-type") || "image/jpeg"
+    return `data:${mimeType};base64,${base64}`
+  } else {
+    // It's a File
+    const arrayBuffer = await source.arrayBuffer()
+    const base64 = Buffer.from(arrayBuffer).toString("base64")
+    return `data:${source.type};base64,${base64}`
   }
 }
 
@@ -108,7 +136,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Mode and prompt are required" }, { status: 400 })
     }
 
-    const apiKey = userApiKey || process.env.GEMINI_API_KEY
+    const apiKey = userApiKey || process.env.BYTEPLUS_API_KEY
 
     if (!apiKey) {
       console.log("[v0] API: No API key available")
@@ -118,58 +146,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const ai = new GoogleGenAI({ apiKey })
+    const size = ASPECT_RATIO_TO_SIZE[aspectRatio] || ASPECT_RATIO_TO_SIZE["1:1"]
+    console.log("[v0] API: Using size:", size)
 
-    const getAspectRatioString = (ratio: string): string => {
-      // Return the ratio string directly if it matches Gemini's format
-      const validRatios = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
-      if (validRatios.includes(ratio)) {
-        return ratio
-      }
+    const imageDataUris: string[] = []
 
-      // Fallback for legacy values
-      switch (ratio) {
-        case "square":
-          return "1:1"
-        case "portrait":
-          return "9:16"
-        case "landscape":
-          return "16:9"
-        case "wide":
-          return "21:9"
-        default:
-          return "1:1"
-      }
-    }
-
-    const aspectRatioString = getAspectRatioString(aspectRatio || "square")
-
-    let result: any
-
-    if (mode === "text-to-image") {
-      console.log("[v0] API: Using text-to-image mode with Gemini")
-      console.log("[v0] API: Using aspect_ratio:", aspectRatioString)
-
-      result = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
-        contents: prompt,
-        config: {
-          responseModalities: ["Image"],
-          imageConfig: {
-            aspectRatio: aspectRatioString,
-          },
-        },
-      })
-    } else if (mode === "image-editing") {
-      console.log("[v0] API: Using image-editing mode with Gemini")
-      console.log("[v0] API: Using aspect_ratio:", aspectRatioString)
+    if (mode === "image-editing") {
+      console.log("[v0] API: Processing images for Seedream")
 
       const image1 = formData.get("image1") as File
       const image2 = formData.get("image2") as File
       const image1Url = formData.get("image1Url") as string
       const image2Url = formData.get("image2Url") as string
 
-      // Check if we have at least one image (file or URL)
       const hasImage1 = image1 || image1Url
       const hasImage2 = image2 || image2Url
 
@@ -178,111 +167,114 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "At least one image is required for editing mode" }, { status: 400 })
       }
 
-      console.log("[v0] API: Processing images for Gemini")
-
-      const parts: any[] = [{ text: prompt }]
-
-      if (image1) {
-        const image1Buffer = await image1.arrayBuffer()
-        const image1Base64 = Buffer.from(image1Buffer).toString("base64")
-        parts.push({
-          inlineData: {
-            mimeType: image1.type,
-            data: image1Base64,
-          },
-        })
-        console.log("[v0] API: Image1 added as inline data")
-      } else if (image1Url) {
-        // For URLs, we need to fetch and convert to base64
-        try {
-          const response = await fetch(image1Url)
-          const arrayBuffer = await response.arrayBuffer()
-          const base64 = Buffer.from(arrayBuffer).toString("base64")
-          const mimeType = response.headers.get("content-type") || "image/jpeg"
-          parts.push({
-            inlineData: {
-              mimeType,
-              data: base64,
-            },
-          })
+      try {
+        if (image1) {
+          imageDataUris.push(await imageToBase64DataUri(image1))
+          console.log("[v0] API: Image1 converted to data URI")
+        } else if (image1Url) {
+          imageDataUris.push(await imageToBase64DataUri(image1Url))
           console.log("[v0] API: Image1 URL fetched and converted")
-        } catch (error) {
-          console.error("[v0] API: Error fetching image1 URL:", error)
-          return NextResponse.json({ error: "Failed to fetch image from URL" }, { status: 400 })
         }
-      }
 
-      if (image2) {
-        const image2Buffer = await image2.arrayBuffer()
-        const image2Base64 = Buffer.from(image2Buffer).toString("base64")
-        parts.push({
-          inlineData: {
-            mimeType: image2.type,
-            data: image2Base64,
-          },
-        })
-        console.log("[v0] API: Image2 added as inline data")
-      } else if (image2Url) {
-        try {
-          const response = await fetch(image2Url)
-          const arrayBuffer = await response.arrayBuffer()
-          const base64 = Buffer.from(arrayBuffer).toString("base64")
-          const mimeType = response.headers.get("content-type") || "image/jpeg"
-          parts.push({
-            inlineData: {
-              mimeType,
-              data: base64,
-            },
-          })
+        if (image2) {
+          imageDataUris.push(await imageToBase64DataUri(image2))
+          console.log("[v0] API: Image2 converted to data URI")
+        } else if (image2Url) {
+          imageDataUris.push(await imageToBase64DataUri(image2Url))
           console.log("[v0] API: Image2 URL fetched and converted")
-        } catch (error) {
-          console.error("[v0] API: Error fetching image2 URL:", error)
-          // Continue with just one image
         }
+      } catch (error) {
+        console.error("[v0] API: Error processing images:", error)
+        return NextResponse.json({ error: "Failed to process images" }, { status: 400 })
       }
 
-      console.log("[v0] API: Total parts for editing:", parts.length)
-
-      result = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
-        contents: [
-          {
-            role: "user",
-            parts,
-          },
-        ],
-        config: {
-          responseModalities: ["Image"],
-          imageConfig: {
-            aspectRatio: aspectRatioString,
-          },
-        },
-      })
-    } else {
-      console.log("[v0] API: Invalid mode:", mode)
-      return NextResponse.json({ error: "Invalid mode. Must be 'text-to-image' or 'image-editing'" }, { status: 400 })
+      console.log("[v0] API: Total images prepared:", imageDataUris.length)
     }
 
-    console.log("[v0] API: Gemini response received")
+    const requestBody: Record<string, any> = {
+      model: "seedream-4-5-251128",
+      prompt: prompt,
+      size: size,
+      sequential_image_generation: "disabled",
+      watermark: false,
+      response_format: "b64_json",
+      optimize_prompt_options: {
+        mode: "standard",
+      },
+    }
 
-    const candidate = result.candidates?.[0]
-    if (!candidate?.content?.parts) {
+    // Add images for image-editing mode
+    if (mode === "image-editing" && imageDataUris.length > 0) {
+      requestBody.image = imageDataUris
+    }
+
+    console.log("[v0] API: Calling BytePlus Seedream API")
+
+    const response = await fetch(BYTEPLUS_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    })
+
+    console.log("[v0] API: BytePlus response status:", response.status)
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.error("[v0] API: BytePlus error response:", errorData)
+
+      // Handle specific BytePlus error codes
+      if (response.status === 401) {
+        return NextResponse.json(
+          {
+            error: "Invalid API key",
+            details: "The provided BytePlus API key is not valid.",
+            errorType: "INVALID_API_KEY",
+          },
+          { status: 401 },
+        )
+      }
+
+      if (response.status === 429) {
+        return NextResponse.json(
+          {
+            error: "Rate limit exceeded",
+            details: "BytePlus API rate limit exceeded. Please try again later.",
+            errorType: "QUOTA_EXCEEDED",
+          },
+          { status: 429 },
+        )
+      }
+
+      throw new Error(errorData.error?.message || `BytePlus API error: ${response.status}`)
+    }
+
+    const result = await response.json()
+    console.log("[v0] API: BytePlus response received")
+
+    const imageData = result.data?.[0]
+
+    if (!imageData) {
       console.log("[v0] API: No image in response")
       throw new Error("No images generated")
     }
 
-    // Find the image part in the response
-    const imagePart = candidate.content.parts.find((part: any) => part.inlineData)
+    let imageUrl: string
 
-    if (!imagePart?.inlineData?.data) {
-      console.log("[v0] API: No inline image data found")
-      throw new Error("No images generated")
+    if (imageData.b64_json) {
+      // Response is base64 encoded
+      imageUrl = `data:image/png;base64,${imageData.b64_json}`
+      console.log("[v0] API: Generated image from b64_json")
+    } else if (imageData.url) {
+      // Response is a URL
+      imageUrl = imageData.url
+      console.log("[v0] API: Generated image URL received")
+    } else {
+      console.log("[v0] API: Unexpected response format")
+      throw new Error("Unexpected response format from BytePlus API")
     }
-
-    const mimeType = imagePart.inlineData.mimeType || "image/png"
-    const imageUrl = `data:${mimeType};base64,${imagePart.inlineData.data}`
-
-    console.log("[v0] API: Generated image data URL created")
 
     return NextResponse.json(
       {
@@ -315,12 +307,20 @@ export async function POST(request: NextRequest) {
       const err = error as any
 
       // API Key errors
-      if (err.message?.includes("API_KEY_INVALID") || err.message?.includes("API key not valid")) {
+      if (
+        err.message?.includes("API_KEY_INVALID") ||
+        err.message?.includes("API key not valid") ||
+        err.message?.includes("401")
+      ) {
         statusCode = 401
         errorType = "INVALID_API_KEY"
         userMessage = "Invalid API key"
-        details = "The provided API key is not valid. Please check your API key and try again."
-      } else if (err.message?.includes("quota") || err.message?.includes("QUOTA_EXCEEDED")) {
+        details = "The provided API key is not valid. Please check your BytePlus API key and try again."
+      } else if (
+        err.message?.includes("quota") ||
+        err.message?.includes("QUOTA_EXCEEDED") ||
+        err.message?.includes("429")
+      ) {
         statusCode = 429
         errorType = "QUOTA_EXCEEDED"
         userMessage = "API quota exceeded"
@@ -335,7 +335,8 @@ export async function POST(request: NextRequest) {
       else if (
         err.message?.includes("SAFETY") ||
         err.message?.includes("content policy") ||
-        err.message?.includes("blocked")
+        err.message?.includes("blocked") ||
+        err.message?.includes("sensitive")
       ) {
         statusCode = 400
         errorType = "CONTENT_POLICY_VIOLATION"

@@ -231,26 +231,6 @@ export function ImageCombiner() {
       ),
     },
     {
-      value: "4:5",
-      label: "4:5",
-      ratio: 4 / 5,
-      icon: (
-        <svg className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" viewBox="0 0 24 24">
-          <rect x="8" y="4" width="8" height="16" stroke="currentColor" strokeWidth="2" fill="none" />
-        </svg>
-      ),
-    },
-    {
-      value: "5:4",
-      label: "5:4",
-      ratio: 5 / 4,
-      icon: (
-        <svg className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" viewBox="0 0 24 24">
-          <rect x="4" y="8" width="16" height="8" stroke="currentColor" strokeWidth="2" fill="none" />
-        </svg>
-      ),
-    },
-    {
       value: "9:16",
       label: "9:16",
       ratio: 9 / 16,
@@ -292,7 +272,7 @@ export function ImageCombiner() {
   }, [])
 
   useEffect(() => {
-    const savedApiKey = localStorage.getItem("gemini-api-key")
+    const savedApiKey = localStorage.getItem("byteplus-api-key") // Updated key
     if (savedApiKey) {
       setUserApiKey(savedApiKey)
     }
@@ -549,26 +529,6 @@ export function ImageCombiner() {
         icon: (
           <svg className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" viewBox="0 0 24 24">
             <rect x="5" y="8" width="14" height="8" stroke="currentColor" strokeWidth="2" fill="none" />
-          </svg>
-        ),
-      },
-      {
-        value: "4:5",
-        label: "4:5",
-        ratio: 4 / 5,
-        icon: (
-          <svg className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" viewBox="0 0 24 24">
-            <rect x="8" y="4" width="8" height="16" stroke="currentColor" strokeWidth="2" fill="none" />
-          </svg>
-        ),
-      },
-      {
-        value: "5:4",
-        label: "5:4",
-        ratio: 5 / 4,
-        icon: (
-          <svg className="w-3 h-3 md:w-4 md:h-4" fill="currentColor" viewBox="0 0 24 24">
-            <rect x="4" y="8" width="16" height="8" stroke="currentColor" strokeWidth="2" fill="none" />
           </svg>
         ),
       },
@@ -1362,9 +1322,9 @@ export function ImageCombiner() {
   const handleApiKeyChange = (key: string) => {
     setUserApiKey(key)
     if (key) {
-      localStorage.setItem("gemini-api-key", key)
+      localStorage.setItem("byteplus-api-key", key) // Updated key
     } else {
-      localStorage.removeItem("gemini-api-key")
+      localStorage.removeItem("byteplus-api-key") // Updated key
     }
   }
 
@@ -1550,16 +1510,16 @@ export function ImageCombiner() {
                     />
                   </svg>
                   <div className="text-xs text-gray-300 space-y-1">
-                    <p>Enter your Google AI API key to bypass rate limits and use your own quota.</p>
+                    <p>Enter your BytePlus API key to bypass rate limits and use your own quota.</p>
                     <p className="text-gray-400">
-                      Get your free API key at{" "}
+                      Get your API key at{" "}
                       <a
-                        href="https://aistudio.google.com/apikey"
+                        href="https://console.byteplus.com"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-400 hover:underline"
                       >
-                        Google AI Studio
+                        BytePlus Console
                       </a>
                     </p>
                   </div>
@@ -1569,7 +1529,7 @@ export function ImageCombiner() {
                     type="password"
                     value={userApiKey}
                     onChange={(e) => handleApiKeyChange(e.target.value)}
-                    placeholder="Enter your Gemini API key..."
+                    placeholder="Enter your BytePlus API key..."
                     className="flex-1 p-2 bg-black/50 border border-gray-600 text-white text-xs focus:outline-none focus:ring-2 focus:ring-white rounded select-text"
                   />
                   {userApiKey && (

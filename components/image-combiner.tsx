@@ -2288,6 +2288,13 @@ export function ImageCombiner() {
                   />
                 </svg>
               </a>
+              <span className="text-gray-600">•</span>
+              <a
+                href="/privacy-policy"
+                className="text-xs md:text-sm text-gray-400 hover:text-white transition-colors duration-200"
+              >
+                Privacy Policy
+              </a>
             </div>
           </div>
         </div>

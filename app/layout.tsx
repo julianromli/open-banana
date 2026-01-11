@@ -3,6 +3,14 @@ import type { Metadata } from "next"
 
 import { Suspense } from "react"
 import { Analytics } from "@vercel/analytics/react"
+import {
+  ClerkProvider,
+  SignInButton,
+  SignUpButton,
+  SignedIn,
+  SignedOut,
+  UserButton,
+} from "@clerk/nextjs"
 import "./globals.css"
 
 import { Inter, JetBrains_Mono, Libre_Baskerville as V0_Font_Libre_Baskerville, IBM_Plex_Mono as V0_Font_IBM_Plex_Mono, Lora as V0_Font_Lora } from 'next/font/google'
@@ -80,93 +88,108 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
-      <head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@graph": [
-                {
-                  "@type": "WebSite",
-                  "@id": "https://open-banana.vercel.app/#website",
-                  url: "https://open-banana.vercel.app/",
-                  name: "Open Banana",
-                  description: "Free AI Image Generator - Create and edit images with AI",
-                  publisher: {
-                    "@id": "https://open-banana.vercel.app/#organization",
-                  },
-                  potentialAction: {
-                    "@type": "SearchAction",
-                    target: {
-                      "@type": "EntryPoint",
-                      urlTemplate: "https://open-banana.vercel.app/?q={search_term_string}",
-                    },
-                    "query-input": "required name=search_term_string",
-                  },
-                },
-                {
-                  "@type": "Organization",
-                  "@id": "https://open-banana.vercel.app/#organization",
-                  name: "Open Banana",
-                  url: "https://open-banana.vercel.app/",
-                  logo: {
-                    "@type": "ImageObject",
-                    url: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNkrTSPMxqrLXWoAOxHZEIn5u8KwidYCeQ4cFR",
-                  },
-                },
-                {
-                  "@type": "SoftwareApplication",
-                  name: "Open Banana",
-                  applicationCategory: "DesignApplication",
-                  offers: {
-                    "@type": "Offer",
-                    price: "0",
-                    priceCurrency: "USD",
-                  },
-                  operatingSystem: "Web Browser",
-                  description:
-                    "Free AI image generator powered by Gemini 2.5 Flash. Create and edit stunning images with artificial intelligence.",
-                  screenshot: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe",
-                  aggregateRating: {
-                    "@type": "AggregateRating",
-                    ratingValue: "4.8",
-                    ratingCount: "100",
-                  },
-                },
-                {
-                  "@type": "WebPage",
-                  "@id": "https://open-banana.vercel.app/#webpage",
-                  url: "https://open-banana.vercel.app/",
-                  name: "Free AI Image Generator | Open Banana",
-                  description: "Generate and edit stunning images with AI. No signup required.",
-                  isPartOf: {
+    <ClerkProvider>
+      <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+        <head>
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@graph": [
+                  {
+                    "@type": "WebSite",
                     "@id": "https://open-banana.vercel.app/#website",
+                    url: "https://open-banana.vercel.app/",
+                    name: "Open Banana",
+                    description: "Free AI Image Generator - Create and edit images with AI",
+                    publisher: {
+                      "@id": "https://open-banana.vercel.app/#organization",
+                    },
+                    potentialAction: {
+                      "@type": "SearchAction",
+                      target: {
+                        "@type": "EntryPoint",
+                        urlTemplate: "https://open-banana.vercel.app/?q={search_term_string}",
+                      },
+                      "query-input": "required name=search_term_string",
+                    },
                   },
-                  about: {
+                  {
+                    "@type": "Organization",
                     "@id": "https://open-banana.vercel.app/#organization",
+                    name: "Open Banana",
+                    url: "https://open-banana.vercel.app/",
+                    logo: {
+                      "@type": "ImageObject",
+                      url: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNkrTSPMxqrLXWoAOxHZEIn5u8KwidYCeQ4cFR",
+                    },
                   },
-                  primaryImageOfPage: {
-                    "@type": "ImageObject",
-                    url: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe",
+                  {
+                    "@type": "SoftwareApplication",
+                    name: "Open Banana",
+                    applicationCategory: "DesignApplication",
+                    offers: {
+                      "@type": "Offer",
+                      price: "0",
+                      priceCurrency: "USD",
+                    },
+                    operatingSystem: "Web Browser",
+                    description:
+                      "Free AI image generator powered by Gemini 2.5 Flash. Create and edit stunning images with artificial intelligence.",
+                    screenshot: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe",
+                    aggregateRating: {
+                      "@type": "AggregateRating",
+                      ratingValue: "4.8",
+                      ratingCount: "100",
+                    },
                   },
-                },
-              ],
-            }),
-          }}
-        />
-      </head>
-      <body className={`font-mono antialiased ${_v0_fontVariables}`}>
-        <Suspense fallback={null}>{children}</Suspense>
-        <Analytics />
-      </body>
-    </html>
+                  {
+                    "@type": "WebPage",
+                    "@id": "https://open-banana.vercel.app/#webpage",
+                    url: "https://open-banana.vercel.app/",
+                    name: "Free AI Image Generator | Open Banana",
+                    description: "Generate and edit stunning images with AI. No signup required.",
+                    isPartOf: {
+                      "@id": "https://open-banana.vercel.app/#website",
+                    },
+                    about: {
+                      "@id": "https://open-banana.vercel.app/#organization",
+                    },
+                    primaryImageOfPage: {
+                      "@type": "ImageObject",
+                      url: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe",
+                    },
+                  },
+                ],
+              }),
+            }}
+          />
+        </head>
+        <body className={`font-mono antialiased ${_v0_fontVariables}`}>
+          <header className="flex justify-end items-center p-4 gap-4 h-16">
+            <SignedOut>
+              <SignInButton />
+              <SignUpButton>
+                <button className="bg-[#6c47ff] text-white rounded-full font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 cursor-pointer">
+                  Sign Up
+                </button>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
+          </header>
+          <Suspense fallback={null}>{children}</Suspense>
+          <Analytics />
+        </body>
+      </html>
+    </ClerkProvider>
   )
 }

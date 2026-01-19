@@ -11,6 +11,7 @@
   "dependencies": {
     "@cfworker/json-schema": "latest",
     "@clerk/nextjs": "^6.36.7",
+    "@fal-ai/client": "^1.8.3",
     "@google/genai": "latest",
     "@hookform/resolvers": "^3.10.0",
     "@modelcontextprotocol/sdk": "latest",

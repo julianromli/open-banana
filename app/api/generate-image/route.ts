@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { Redis } from "@upstash/redis"
+import { generateImageWithFallback, ProviderError } from "@/lib/ai-providers"
 
 let redis: Redis | null = null
 
@@ -18,21 +19,8 @@ function getRedis(): Redis | null {
   return redis
 }
 
-const BYTEPLUS_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations"
-
 // Rate limiting: 5 requests per day per IP
 const MAX_REQUESTS_PER_DAY = 5
-
-const ASPECT_RATIO_TO_SIZE: Record<string, string> = {
-  "1:1": "2048x2048",
-  "2:3": "1664x2496",
-  "3:2": "2496x1664",
-  "3:4": "1728x2304",
-  "4:3": "2304x1728",
-  "9:16": "1440x2560",
-  "16:9": "2560x1440",
-  "21:9": "3024x1296",
-}
 
 async function checkRateLimit(ip: string): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
   const now = Date.now()
@@ -155,23 +143,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Mode and prompt are required" }, { status: 400 })
     }
 
-    const apiKey = userApiKey || process.env.BYTEPLUS_API_KEY
-
-    if (!apiKey) {
-      console.log("[v0] API: No API key available")
-      return NextResponse.json(
-        { error: "API key not configured. Please provide your own API key or contact support." },
-        { status: 500 },
-      )
-    }
-
-    const size = ASPECT_RATIO_TO_SIZE[aspectRatio] || ASPECT_RATIO_TO_SIZE["1:1"]
-    console.log("[v0] API: Using size:", size)
-
     const imageDataUris: string[] = []
 
     if (mode === "image-editing") {
-      console.log("[v0] API: Processing images for Seedream")
+      console.log("[v0] API: Processing images for editing mode")
 
       const image1 = formData.get("image1") as File
       const image2 = formData.get("image2") as File
@@ -210,90 +185,13 @@ export async function POST(request: NextRequest) {
       console.log("[v0] API: Total images prepared:", imageDataUris.length)
     }
 
-    const requestBody: Record<string, any> = {
-      model: "seedream-4-5-251128",
-      prompt: prompt,
-      size: size,
-      sequential_image_generation: "disabled",
-      watermark: false,
-      response_format: "b64_json",
-      optimize_prompt_options: {
-        mode: "standard",
-      },
-    }
-
-    // Add images for image-editing mode
-    if (mode === "image-editing" && imageDataUris.length > 0) {
-      requestBody.image = imageDataUris
-    }
-
-    console.log("[v0] API: Calling BytePlus Seedream API")
-
-    const response = await fetch(BYTEPLUS_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
+    // Use the provider abstraction with automatic fallback
+    const result = await generateImageWithFallback({
+      prompt,
+      aspectRatio: aspectRatio || "1:1",
+      mode: mode as "text-to-image" | "image-editing",
+      images: imageDataUris.length > 0 ? imageDataUris : undefined,
     })
-
-    console.log("[v0] API: BytePlus response status:", response.status)
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error("[v0] API: BytePlus error response:", errorData)
-
-      // Handle specific BytePlus error codes
-      if (response.status === 401) {
-        return NextResponse.json(
-          {
-            error: "Invalid API key",
-            details: "The provided BytePlus API key is not valid.",
-            errorType: "INVALID_API_KEY",
-          },
-          { status: 401 },
-        )
-      }
-
-      if (response.status === 429) {
-        return NextResponse.json(
-          {
-            error: "Rate limit exceeded",
-            details: "BytePlus API rate limit exceeded. Please try again later.",
-            errorType: "QUOTA_EXCEEDED",
-          },
-          { status: 429 },
-        )
-      }
-
-      throw new Error(errorData.error?.message || `BytePlus API error: ${response.status}`)
-    }
-
-    const result = await response.json()
-    console.log("[v0] API: BytePlus response received")
-
-    const imageData = result.data?.[0]
-
-    if (!imageData) {
-      console.log("[v0] API: No image in response")
-      throw new Error("No images generated")
-    }
-
-    let imageUrl: string
-
-    if (imageData.b64_json) {
-      // Response is base64 encoded
-      imageUrl = `data:image/png;base64,${imageData.b64_json}`
-      console.log("[v0] API: Generated image from b64_json")
-    } else if (imageData.url) {
-      // Response is a URL
-      imageUrl = imageData.url
-      console.log("[v0] API: Generated image URL received")
-    } else {
-      console.log("[v0] API: Unexpected response format")
-      throw new Error("Unexpected response format from BytePlus API")
-    }
 
     let remainingRequests = MAX_REQUESTS_PER_DAY.toString()
     if (!bypassRateLimit && !bypassRateLimitDev) {
@@ -310,8 +208,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        url: imageUrl,
-        prompt: prompt,
+        url: result.url,
+        prompt: result.prompt,
         description: "",
       },
       {
@@ -326,13 +224,25 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[v0] API: Error generating image:", error)
 
+    // Handle ProviderError with proper status codes
+    if (error instanceof ProviderError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          errorType: error.errorType,
+          details: error.message,
+        },
+        { status: error.statusCode },
+      )
+    }
+
     let statusCode = 500
     let errorType = "UNKNOWN_ERROR"
     let userMessage = "Failed to generate image"
     let details = ""
 
     if (error && typeof error === "object") {
-      const err = error as any
+      const err = error as { message?: string }
 
       // API Key errors
       if (
@@ -343,7 +253,7 @@ export async function POST(request: NextRequest) {
         statusCode = 401
         errorType = "INVALID_API_KEY"
         userMessage = "Invalid API key"
-        details = "The provided API key is not valid. Please check your BytePlus API key and try again."
+        details = "The provided API key is not valid. Please check your API key and try again."
       } else if (
         err.message?.includes("quota") ||
         err.message?.includes("QUOTA_EXCEEDED") ||

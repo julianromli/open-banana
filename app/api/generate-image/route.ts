@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { Redis } from "@upstash/redis"
+import { auth } from "@clerk/nextjs/server"
 import { generateImageWithFallback, ProviderError } from "@/lib/ai-providers"
 
 let redis: Redis | null = null
@@ -19,19 +20,18 @@ function getRedis(): Redis | null {
   return redis
 }
 
-// Rate limiting: 5 requests per day per IP
-const MAX_REQUESTS_PER_DAY = 5
+// Rate limiting: 10 requests per day per user
+const MAX_REQUESTS_PER_DAY = 10
 
-async function checkRateLimit(ip: string): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
-  const now = Date.now()
-  const today = new Date().toISOString().split("T")[0] // YYYY-MM-DD format
-  const key = `ratelimit:${ip}:${today}`
+async function checkRateLimit(userId: string): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
+  const now = new Date()
+  const today = now.toISOString().split("T")[0] // YYYY-MM-DD format (UTC)
+  const key = `ratelimit:user:${userId}:${today}`
 
-  // Get end of day timestamp for expiration
-  const endOfDay = new Date()
-  endOfDay.setHours(23, 59, 59, 999)
-  const resetTime = endOfDay.getTime()
-  const ttlSeconds = Math.floor((resetTime - now) / 1000)
+  // Get UTC midnight for expiration
+  const endOfDayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0))
+  const resetTime = endOfDayUTC.getTime()
+  const ttlSeconds = Math.floor((resetTime - now.getTime()) / 1000)
 
   try {
     const db = getRedis()
@@ -83,9 +83,6 @@ async function imageToBase64DataUri(source: File | string): Promise<string> {
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || request.headers.get("x-real-ip") || "unknown"
-    console.log("[v0] API: Request from IP:", ip)
-
     const userApiKey = request.headers.get("x-api-key")
     const bypassRateLimit = !!userApiKey // Bypass rate limiting if user provides their own key
 
@@ -98,18 +95,39 @@ export async function POST(request: NextRequest) {
     console.log("[v0] API: Is Dev Mode:", isDev)
     console.log("[v0] API: Bypass rate limit:", bypassRateLimit || bypassRateLimitDev)
 
-    // Only apply rate limiting if user didn't provide their own key and not in dev/bypass mode
+    // Get authenticated user
+    let userId: string | null = null
+    
+    // Only require auth if not in bypass mode
     if (!bypassRateLimit && !bypassRateLimitDev) {
-      const rateLimit = await checkRateLimit(ip)
+      const { userId: authUserId } = await auth()
+      userId = authUserId
+
+      // Require authentication
+      if (!userId) {
+        console.log("[v0] API: Unauthenticated request, redirecting to sign-in")
+        return NextResponse.json(
+          {
+            error: "Authentication required",
+            message: "Please sign in to generate images",
+            redirectUrl: "/sign-in",
+          },
+          { status: 401 },
+        )
+      }
+
+      console.log("[v0] API: Authenticated user:", userId)
+
+      const rateLimit = await checkRateLimit(userId)
       console.log("[v0] API: Rate limit check:", rateLimit)
 
       if (!rateLimit.allowed) {
         const resetDate = new Date(rateLimit.resetTime)
-        console.log("[v0] API: Rate limit exceeded for IP:", ip)
+        console.log("[v0] API: Rate limit exceeded for user:", userId)
         return NextResponse.json(
           {
             error: "Rate limit exceeded",
-            message: `You have reached the maximum of ${MAX_REQUESTS_PER_DAY} generations per day. Please try again after ${resetDate.toLocaleTimeString()} or use your own API key.`,
+            message: `You have reached the maximum of ${MAX_REQUESTS_PER_DAY} generations per day. Please try again tomorrow or use your own API key.`,
             resetTime: rateLimit.resetTime,
           },
           {
@@ -194,11 +212,11 @@ export async function POST(request: NextRequest) {
     })
 
     let remainingRequests = MAX_REQUESTS_PER_DAY.toString()
-    if (!bypassRateLimit && !bypassRateLimitDev) {
+    if (!bypassRateLimit && !bypassRateLimitDev && userId) {
       try {
         const db = getRedis()
         if (db) {
-          const count = await db.get<number>(`ratelimit:${ip}:${new Date().toISOString().split("T")[0]}`)
+          const count = await db.get<number>(`ratelimit:user:${userId}:${new Date().toISOString().split("T")[0]}`)
           remainingRequests = count ? (MAX_REQUESTS_PER_DAY - count).toString() : MAX_REQUESTS_PER_DAY.toString()
         }
       } catch {
@@ -217,7 +235,9 @@ export async function POST(request: NextRequest) {
           "X-RateLimit-Limit": MAX_REQUESTS_PER_DAY.toString(),
           "X-RateLimit-Remaining": remainingRequests,
           "X-RateLimit-Reset":
-            bypassRateLimit || bypassRateLimitDev ? "0" : new Date().setHours(23, 59, 59, 999).toString(),
+            bypassRateLimit || bypassRateLimitDev
+              ? "0"
+              : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1, 0, 0, 0)).getTime().toString(),
         },
       },
     )

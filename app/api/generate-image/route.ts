@@ -20,8 +20,8 @@ function getRedis(): Redis | null {
   return redis
 }
 
-// Rate limiting: 10 requests per day per user
-const MAX_REQUESTS_PER_DAY = 10
+// Rate limiting: 5 requests per day per user
+const MAX_REQUESTS_PER_DAY = 5
 
 async function checkRateLimit(userId: string): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
   const now = new Date()

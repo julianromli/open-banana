@@ -9,7 +9,7 @@ Change rate limiting from IP-based (5/day) to Clerk User ID-based (10/day).
 
 ## Requirements
 
-- Max 10 generations per user per day
+- Max 5 generations per user per day
 - Only authenticated Clerk users can generate
 - Anonymous users redirected to `/sign-in`
 - Daily reset at midnight UTC
@@ -36,11 +36,7 @@ Example: `ratelimit:user:user_2abc123xyz:2026-01-19`
 ### 3. Rate Limit Constant
 
 ```typescript
-// Before
 const MAX_REQUESTS_PER_DAY = 5
-
-// After
-const MAX_REQUESTS_PER_DAY = 10
 ```
 
 ### 4. checkRateLimit Function
@@ -93,7 +89,7 @@ const ttlSeconds = Math.floor((endOfDayUTC.getTime() - now.getTime()) / 1000)
 ```json
 {
   "error": "Rate limit exceeded",
-  "message": "You have reached the maximum of 10 generations per day. Please try again tomorrow or use your own API key.",
+  "message": "You have reached the maximum of 5 generations per day. Please try again tomorrow or use your own API key.",
   "resetTime": 1737331200000
 }
 ```
@@ -103,7 +99,7 @@ const ttlSeconds = Math.floor((endOfDayUTC.getTime() - now.getTime()) / 1000)
 | Aspect | Current | New |
 |--------|---------|-----|
 | Identifier | IP address | Clerk User ID |
-| Limit | 5/day | 10/day |
+| Limit | - | 5/day |
 | Anonymous users | Allowed (IP limit) | Blocked (401 + redirect) |
 | Redis key | `ratelimit:{ip}:{date}` | `ratelimit:user:{userId}:{date}` |
 | Reset time | End of local day | Midnight UTC |

@@ -1,7 +1,49 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { Redis } from "@upstash/redis"
-import { auth } from "@clerk/nextjs/server"
+import { auth, clerkClient } from "@clerk/nextjs/server"
 import { generateImageWithFallback, ProviderError } from "@/lib/ai-providers"
+
+// User tier types and configuration
+type UserTier = "free" | "pro"
+
+interface TierConfig {
+  limit: number
+  name: string
+  rateLimitMessage: string
+}
+
+const TIER_CONFIGS: Record<UserTier, TierConfig> = {
+  free: {
+    limit: 5,
+    name: "Free",
+    rateLimitMessage:
+      "You have reached the maximum of 5 generations per day. Upgrade to Pro for 100 generations per day.",
+  },
+  pro: {
+    limit: 100,
+    name: "Pro",
+    rateLimitMessage:
+      "You have reached the Fair Use Policy limit of 100 generations per day. Your limit will reset at midnight UTC.",
+  },
+}
+
+async function getUserTier(userId: string): Promise<UserTier> {
+  try {
+    const client = await clerkClient()
+    const user = await client.users.getUser(userId)
+    const tier = user.publicMetadata?.tier as UserTier | undefined
+
+    // Return "pro" if tier is explicitly "pro", otherwise return "free"
+    if (tier === "pro") {
+      return "pro"
+    }
+    return "free"
+  } catch (error) {
+    console.error("[v0] API: Error fetching user tier from Clerk:", error)
+    // Default to "free" tier on error
+    return "free"
+  }
+}
 
 let redis: Redis | null = null
 
@@ -20,10 +62,11 @@ function getRedis(): Redis | null {
   return redis
 }
 
-// Rate limiting: 5 requests per day per user
-const MAX_REQUESTS_PER_DAY = 5
-
-async function checkRateLimit(userId: string): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
+async function checkRateLimit(
+  userId: string,
+  tier: UserTier,
+): Promise<{ allowed: boolean; remaining: number; resetTime: number; tier: UserTier; limit: number }> {
+  const limit = TIER_CONFIGS[tier].limit
   const now = new Date()
   const today = now.toISOString().split("T")[0] // YYYY-MM-DD format (UTC)
   const key = `ratelimit:user:${userId}:${today}`
@@ -38,7 +81,7 @@ async function checkRateLimit(userId: string): Promise<{ allowed: boolean; remai
 
     if (!db) {
       console.warn("[v0] API: Redis not available, allowing request")
-      return { allowed: true, remaining: MAX_REQUESTS_PER_DAY, resetTime }
+      return { allowed: true, remaining: limit, resetTime, tier, limit }
     }
 
     // Get current count from Redis
@@ -47,21 +90,21 @@ async function checkRateLimit(userId: string): Promise<{ allowed: boolean; remai
     if (count === null) {
       // First request of the day
       await db.set(key, 1, { ex: ttlSeconds })
-      return { allowed: true, remaining: MAX_REQUESTS_PER_DAY - 1, resetTime }
+      return { allowed: true, remaining: limit - 1, resetTime, tier, limit }
     }
 
     // Check if limit exceeded
-    if (count >= MAX_REQUESTS_PER_DAY) {
-      return { allowed: false, remaining: 0, resetTime }
+    if (count >= limit) {
+      return { allowed: false, remaining: 0, resetTime, tier, limit }
     }
 
     // Increment count
     await db.incr(key)
-    return { allowed: true, remaining: MAX_REQUESTS_PER_DAY - count - 1, resetTime }
+    return { allowed: true, remaining: limit - count - 1, resetTime, tier, limit }
   } catch (error) {
     console.error("[v0] API: Redis error:", error)
     // Fallback: allow request if Redis fails
-    return { allowed: true, remaining: MAX_REQUESTS_PER_DAY, resetTime }
+    return { allowed: true, remaining: limit, resetTime, tier, limit }
   }
 }
 
@@ -97,6 +140,8 @@ export async function POST(request: NextRequest) {
 
     // Get authenticated user
     let userId: string | null = null
+    let userTier: UserTier = "free"
+    let rateLimitInfo: { allowed: boolean; remaining: number; resetTime: number; tier: UserTier; limit: number } | null = null
     
     // Only require auth if not in bypass mode
     if (!bypassRateLimit && !bypassRateLimitDev) {
@@ -118,31 +163,36 @@ export async function POST(request: NextRequest) {
 
       console.log("[v0] API: Authenticated user:", userId)
 
-      const rateLimit = await checkRateLimit(userId)
-      console.log("[v0] API: Rate limit check:", rateLimit)
+      userTier = await getUserTier(userId)
+      console.log("[v0] API: User tier:", userTier)
 
-      if (!rateLimit.allowed) {
-        const resetDate = new Date(rateLimit.resetTime)
+      rateLimitInfo = await checkRateLimit(userId, userTier)
+      console.log("[v0] API: Rate limit check:", rateLimitInfo)
+
+      if (!rateLimitInfo.allowed) {
         console.log("[v0] API: Rate limit exceeded for user:", userId)
         return NextResponse.json(
           {
             error: "Rate limit exceeded",
-            message: `You have reached the maximum of ${MAX_REQUESTS_PER_DAY} generations per day. Please try again tomorrow or use your own API key.`,
-            resetTime: rateLimit.resetTime,
+            message: TIER_CONFIGS[rateLimitInfo.tier].rateLimitMessage,
+            tier: rateLimitInfo.tier,
+            limit: rateLimitInfo.limit,
+            resetTime: rateLimitInfo.resetTime,
           },
           {
             status: 429,
             headers: {
-              "X-RateLimit-Limit": MAX_REQUESTS_PER_DAY.toString(),
+              "X-RateLimit-Limit": rateLimitInfo.limit.toString(),
               "X-RateLimit-Remaining": "0",
-              "X-RateLimit-Reset": rateLimit.resetTime.toString(),
+              "X-RateLimit-Reset": rateLimitInfo.resetTime.toString(),
+              "X-RateLimit-Tier": rateLimitInfo.tier,
             },
           },
         )
       }
 
       console.log("[v0] API: Starting image generation request")
-      console.log("[v0] API: Remaining requests today:", rateLimit.remaining)
+      console.log("[v0] API: Remaining requests today:", rateLimitInfo.remaining)
     } else {
       console.log("[v0] API: Rate limiting bypassed")
     }
@@ -211,17 +261,14 @@ export async function POST(request: NextRequest) {
       images: imageDataUris.length > 0 ? imageDataUris : undefined,
     })
 
-    let remainingRequests = MAX_REQUESTS_PER_DAY.toString()
-    if (!bypassRateLimit && !bypassRateLimitDev && userId) {
-      try {
-        const db = getRedis()
-        if (db) {
-          const count = await db.get<number>(`ratelimit:user:${userId}:${new Date().toISOString().split("T")[0]}`)
-          remainingRequests = count ? (MAX_REQUESTS_PER_DAY - count).toString() : MAX_REQUESTS_PER_DAY.toString()
-        }
-      } catch {
-        // Ignore Redis errors for rate limit headers
-      }
+    const responseHeaders: Record<string, string> = {}
+
+    // Only include rate limit headers if rate limiting is active
+    if (!bypassRateLimit && !bypassRateLimitDev && userId && rateLimitInfo) {
+      responseHeaders["X-RateLimit-Limit"] = rateLimitInfo.limit.toString()
+      responseHeaders["X-RateLimit-Remaining"] = rateLimitInfo.remaining.toString()
+      responseHeaders["X-RateLimit-Reset"] = rateLimitInfo.resetTime.toString()
+      responseHeaders["X-RateLimit-Tier"] = rateLimitInfo.tier
     }
 
     return NextResponse.json(
@@ -231,14 +278,7 @@ export async function POST(request: NextRequest) {
         description: "",
       },
       {
-        headers: {
-          "X-RateLimit-Limit": MAX_REQUESTS_PER_DAY.toString(),
-          "X-RateLimit-Remaining": remainingRequests,
-          "X-RateLimit-Reset":
-            bypassRateLimit || bypassRateLimitDev
-              ? "0"
-              : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1, 0, 0, 0)).getTime().toString(),
-        },
+        headers: responseHeaders,
       },
     )
   } catch (error) {

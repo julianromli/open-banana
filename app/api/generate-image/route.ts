@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { Redis } from "@upstash/redis"
 import { auth, clerkClient } from "@clerk/nextjs/server"
 import { generateImageWithFallback, ProviderError } from "@/lib/ai-providers"
+import { getUserMessageForErrorType } from "@/lib/generate-image-error"
+import { resolveRedisConfig } from "@/lib/redis-config"
 
 // User tier types and configuration
 type UserTier = "free" | "pro"
@@ -27,6 +29,27 @@ const TIER_CONFIGS: Record<UserTier, TierConfig> = {
   },
 }
 
+type GenerateImageErrorBody = {
+  errorType: string
+  message: string
+  redirectUrl?: string
+  retryAfter?: number
+  resetTime?: number
+  tier?: UserTier
+  limit?: number
+}
+
+function buildErrorResponse(
+  status: number,
+  body: GenerateImageErrorBody,
+  headers?: Record<string, string>
+): NextResponse {
+  return NextResponse.json(body, {
+    status,
+    headers,
+  })
+}
+
 async function getUserTier(userId: string): Promise<UserTier> {
   try {
     const client = await clerkClient()
@@ -48,16 +71,20 @@ async function getUserTier(userId: string): Promise<UserTier> {
 let redis: Redis | null = null
 
 function getRedis(): Redis | null {
-  const url = process.env.UPSTASH_KV_KV_REST_API_URL || process.env.KV_REST_API_URL
-  const token = process.env.UPSTASH_KV_KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN
+  const config = resolveRedisConfig()
 
-  if (!url || !token) {
-    console.warn("[v0] API: Redis URL or token not configured")
+  if (!config) {
+    console.warn(
+      "[v0] API: Redis URL or token not configured (checked UPSTASH_KV_*, KV_REST_*, UPSTASH_REDIS_*)"
+    )
     return null
   }
 
   if (!redis) {
-    redis = new Redis({ url, token })
+    console.log(
+      `[v0] API: Redis config source: url=${config.urlSource}, token=${config.tokenSource}`
+    )
+    redis = new Redis({ url: config.url, token: config.token })
   }
   return redis
 }
@@ -151,14 +178,11 @@ export async function POST(request: NextRequest) {
       // Require authentication
       if (!userId) {
         console.log("[v0] API: Unauthenticated request, redirecting to sign-in")
-        return NextResponse.json(
-          {
-            error: "Authentication required",
-            message: "Please sign in to generate images",
-            redirectUrl: "/sign-in",
-          },
-          { status: 401 },
-        )
+        return buildErrorResponse(401, {
+          errorType: "AUTH_REQUIRED",
+          message: getUserMessageForErrorType("AUTH_REQUIRED"),
+          redirectUrl: "/sign-in",
+        })
       }
 
       console.log("[v0] API: Authenticated user:", userId)
@@ -171,23 +195,24 @@ export async function POST(request: NextRequest) {
 
       if (!rateLimitInfo.allowed) {
         console.log("[v0] API: Rate limit exceeded for user:", userId)
-        return NextResponse.json(
+        const now = Date.now()
+        const retryAfter = Math.max(0, Math.ceil((rateLimitInfo.resetTime - now) / 1000))
+        return buildErrorResponse(
+          429,
           {
-            error: "Rate limit exceeded",
-            message: TIER_CONFIGS[rateLimitInfo.tier].rateLimitMessage,
+            errorType: "RATE_LIMIT_EXCEEDED",
+            message: getUserMessageForErrorType("RATE_LIMIT_EXCEEDED"),
             tier: rateLimitInfo.tier,
             limit: rateLimitInfo.limit,
             resetTime: rateLimitInfo.resetTime,
+            retryAfter,
           },
           {
-            status: 429,
-            headers: {
-              "X-RateLimit-Limit": rateLimitInfo.limit.toString(),
-              "X-RateLimit-Remaining": "0",
-              "X-RateLimit-Reset": rateLimitInfo.resetTime.toString(),
-              "X-RateLimit-Tier": rateLimitInfo.tier,
-            },
-          },
+            "X-RateLimit-Limit": rateLimitInfo.limit.toString(),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": rateLimitInfo.resetTime.toString(),
+            "X-RateLimit-Tier": rateLimitInfo.tier,
+          }
         )
       }
 
@@ -208,7 +233,10 @@ export async function POST(request: NextRequest) {
 
     if (!mode || !prompt) {
       console.log("[v0] API: Missing required fields")
-      return NextResponse.json({ error: "Mode and prompt are required" }, { status: 400 })
+      return buildErrorResponse(400, {
+        errorType: "INVALID_REQUEST",
+        message: getUserMessageForErrorType("INVALID_REQUEST"),
+      })
     }
 
     const imageDataUris: string[] = []
@@ -226,7 +254,10 @@ export async function POST(request: NextRequest) {
 
       if (!hasImage1) {
         console.log("[v0] API: Missing first image for editing mode")
-        return NextResponse.json({ error: "At least one image is required for editing mode" }, { status: 400 })
+        return buildErrorResponse(400, {
+          errorType: "IMAGE_ERROR",
+          message: getUserMessageForErrorType("IMAGE_ERROR"),
+        })
       }
 
       try {
@@ -247,7 +278,10 @@ export async function POST(request: NextRequest) {
         }
       } catch (error) {
         console.error("[v0] API: Error processing images:", error)
-        return NextResponse.json({ error: "Failed to process images" }, { status: 400 })
+        return buildErrorResponse(400, {
+          errorType: "IMAGE_ERROR",
+          message: getUserMessageForErrorType("IMAGE_ERROR"),
+        })
       }
 
       console.log("[v0] API: Total images prepared:", imageDataUris.length)
@@ -286,20 +320,21 @@ export async function POST(request: NextRequest) {
 
     // Handle ProviderError with proper status codes
     if (error instanceof ProviderError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          errorType: error.errorType,
-          details: error.message,
-        },
-        { status: error.statusCode },
-      )
+      const message = getUserMessageForErrorType(error.errorType)
+      console.error("[v0] API: ProviderError detail:", {
+        statusCode: error.statusCode,
+        errorType: error.errorType,
+        detail: error.message,
+      })
+      return buildErrorResponse(error.statusCode, {
+        errorType: error.errorType,
+        message,
+      })
     }
 
     let statusCode = 500
     let errorType = "UNKNOWN_ERROR"
-    let userMessage = "Failed to generate image"
-    let details = ""
+    let errorMessage = getUserMessageForErrorType("UNKNOWN_ERROR")
 
     if (error && typeof error === "object") {
       const err = error as { message?: string }
@@ -312,8 +347,7 @@ export async function POST(request: NextRequest) {
       ) {
         statusCode = 401
         errorType = "INVALID_API_KEY"
-        userMessage = "Invalid API key"
-        details = "The provided API key is not valid. Please check your API key and try again."
+        errorMessage = getUserMessageForErrorType(errorType)
       } else if (
         err.message?.includes("quota") ||
         err.message?.includes("QUOTA_EXCEEDED") ||
@@ -321,13 +355,11 @@ export async function POST(request: NextRequest) {
       ) {
         statusCode = 429
         errorType = "QUOTA_EXCEEDED"
-        userMessage = "API quota exceeded"
-        details = "You've reached your API quota limit. Please try again later or upgrade your plan."
+        errorMessage = getUserMessageForErrorType(errorType)
       } else if (err.message?.includes("RESOURCE_EXHAUSTED")) {
         statusCode = 429
         errorType = "RESOURCE_EXHAUSTED"
-        userMessage = "Resource limit reached"
-        details = "The API is currently overloaded. Please try again in a moment."
+        errorMessage = getUserMessageForErrorType(errorType)
       }
       // Content policy errors
       else if (
@@ -338,22 +370,19 @@ export async function POST(request: NextRequest) {
       ) {
         statusCode = 400
         errorType = "CONTENT_POLICY_VIOLATION"
-        userMessage = "Content policy violation"
-        details = "Your prompt may contain content that violates our policies. Please try a different prompt."
+        errorMessage = getUserMessageForErrorType(errorType)
       }
       // Image format/size errors
       else if (err.message?.includes("image") && (err.message?.includes("format") || err.message?.includes("size"))) {
         statusCode = 400
         errorType = "IMAGE_ERROR"
-        userMessage = "Image format or size error"
-        details = "Please ensure your images are in a supported format (JPEG, PNG, WebP) and under 20MB."
+        errorMessage = getUserMessageForErrorType(errorType)
       }
       // Network/timeout errors
       else if (err.message?.includes("timeout") || err.message?.includes("DEADLINE_EXCEEDED")) {
         statusCode = 504
         errorType = "TIMEOUT"
-        userMessage = "Request timed out"
-        details = "The request took too long to complete. Please try again with a simpler prompt or smaller images."
+        errorMessage = getUserMessageForErrorType(errorType)
       } else if (
         err.message?.includes("network") ||
         err.message?.includes("ENOTFOUND") ||
@@ -361,42 +390,35 @@ export async function POST(request: NextRequest) {
       ) {
         statusCode = 503
         errorType = "NETWORK_ERROR"
-        userMessage = "Network error"
-        details = "Unable to connect to the image generation service. Please check your connection and try again."
+        errorMessage = getUserMessageForErrorType(errorType)
       }
       // Invalid request errors
       else if (err.message?.includes("INVALID_ARGUMENT") || err.message?.includes("invalid")) {
         statusCode = 400
         errorType = "INVALID_REQUEST"
-        userMessage = "Invalid request"
-        details = err.message || "The request parameters are invalid. Please check your inputs and try again."
+        errorMessage = getUserMessageForErrorType(errorType)
       }
       // Model not found/unavailable
       else if (err.message?.includes("NOT_FOUND") || err.message?.includes("model")) {
         statusCode = 503
         errorType = "MODEL_UNAVAILABLE"
-        userMessage = "Service temporarily unavailable"
-        details = "The image generation model is temporarily unavailable. Please try again later."
+        errorMessage = getUserMessageForErrorType(errorType)
       }
       // Generic error fallback
       else {
-        details = err.message || "An unexpected error occurred. Please try again."
+        errorMessage = getUserMessageForErrorType("UNKNOWN_ERROR")
       }
 
       console.error("[v0] API: Error type:", errorType)
       console.error("[v0] API: Error message:", err.message)
       console.error("[v0] API: Status code:", statusCode)
     } else {
-      details = String(error)
+      console.error("[v0] API: Unknown thrown error:", String(error))
     }
 
-    return NextResponse.json(
-      {
-        error: userMessage,
-        details: details,
-        errorType: errorType,
-      },
-      { status: statusCode },
-    )
+    return buildErrorResponse(statusCode, {
+      errorType,
+      message: errorMessage,
+    })
   }
 }

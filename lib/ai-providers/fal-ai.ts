@@ -24,6 +24,67 @@ interface FalEditOutput {
   images: FalImage[]
 }
 
+type FalValidationErrorItem = {
+  loc?: unknown[]
+  msg?: unknown
+  type?: unknown
+}
+
+type FalErrorBody = {
+  detail?: unknown
+}
+
+type FalErrorShape = {
+  status?: number
+  message?: string
+  body?: FalErrorBody
+  requestId?: string
+}
+
+function formatFalValidationDetail(detail: unknown): string | null {
+  if (typeof detail === "string") {
+    return detail
+  }
+
+  if (Array.isArray(detail)) {
+    const formatted = detail
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return typeof item === "string" ? item : null
+        }
+
+        const errorItem = item as FalValidationErrorItem
+        const loc = Array.isArray(errorItem.loc)
+          ? errorItem.loc.map((entry) => String(entry)).join(".")
+          : "body"
+        const message =
+          typeof errorItem.msg === "string"
+            ? errorItem.msg
+            : errorItem.msg
+              ? String(errorItem.msg)
+              : "Validation error"
+        const type = typeof errorItem.type === "string" ? ` (${errorItem.type})` : ""
+
+        return `${loc}: ${message}${type}`
+      })
+      .filter((item): item is string => !!item)
+
+    if (formatted.length > 0) {
+      return formatted.join("; ")
+    }
+  }
+
+  if (detail && typeof detail === "object") {
+    try {
+      return JSON.stringify(detail)
+    } catch {
+      return "Unknown validation error"
+    }
+  }
+
+  return null
+}
+
 export class FalAIProvider implements ImageProvider {
   name = "FAL-AI" as const
 
@@ -150,15 +211,27 @@ export class FalAIProvider implements ImageProvider {
       return error
     }
 
-    const err = error as { status?: number; message?: string; body?: { detail?: string } }
+    const err = error as FalErrorShape
     const status = err.status || 500
-    const message = err.body?.detail || err.message || "Unknown fal.ai error"
+    const detail = formatFalValidationDetail(err.body?.detail)
+    const message = detail || err.message || "Unknown fal.ai error"
 
-    // Determine if retriable (401, 429, 5xx)
-    const isRetriable = status === 401 || status === 429 || status >= 500
+    if (err.requestId) {
+      console.error("[v0] API: fal.ai - Request ID:", err.requestId)
+    }
+    if (detail) {
+      console.error("[v0] API: fal.ai - Parsed validation detail:", detail)
+    }
+
+    // Determine if retriable (401, 422, 429, 5xx)
+    const isRetriable = status === 401 || status === 422 || status === 429 || status >= 500
 
     if (status === 401) {
       return new ProviderError("Invalid fal.ai API key", 401, "INVALID_API_KEY", isRetriable)
+    }
+
+    if (status === 422) {
+      return new ProviderError(message, 422, "PROVIDER_VALIDATION_ERROR", isRetriable)
     }
 
     if (status === 429) {

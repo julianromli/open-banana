@@ -6,33 +6,90 @@
 - **Package Manager**: pnpm
 - **Sub-folder AGENTS.md files**: `app/AGENTS.md`, `components/AGENTS.md`
 
-## Root Setup Commands
+## Build & Test Commands
+
 ```bash
-# Install dependencies
-pnpm install
+# Development
+pnpm dev                        # Start dev server on localhost:3000
+pnpm install                    # Install dependencies
 
-# Run development server
-pnpm dev
+# Building
+pnpm build                      # Production build (validates all routes)
 
-# Build for production
-pnpm build
+# Linting
+pnpm lint                       # Run ESLint
 
-# Lint code
-pnpm lint
+# Testing
+pnpm test                       # Run all tests
+pnpm test:watch                 # Run tests in watch mode
+pnpm test -- rate-limit.test.ts # Run a single test file
+pnpm test -- --testNamePattern="should validate API key"  # Run single test by name
 ```
 
-## Universal Conventions
+## Code Style Guidelines
 
-### Code Style
-- **TypeScript**: Strict mode enabled (`tsconfig.json`)
-- **Imports**: Use `@/` absolute paths (e.g., `@/components/ui/button`, `@/lib/utils`)
-- **Styling**: Tailwind CSS 4 utility classes + CSS variables from `app/globals.css`
-- **Components**: Functional components only, use React hooks
+### TypeScript
+- **Strict mode enabled** (`tsconfig.json`)
+- Use explicit return types on exported functions
+- Prefer `type` over `interface` for object shapes
+- Use `unknown` instead of `any` for error handling
 
-### Naming
-- **Files**: kebab-case (`image-combiner.tsx`, `use-toast.ts`)
-- **Components**: PascalCase exports (`ImageCombiner`, `Button`)
-- **Hooks**: camelCase with `use` prefix (`useToast`, `useMobile`)
+### Imports & Path Aliases
+- **Always use `@/` absolute paths**: `@/components/ui/button`, `@/lib/utils`
+- Group imports: 1) React/Next, 2) External libs, 3) Internal `@/`, 4) Relative `./`
+- Avoid relative imports like `../../components`
+
+### Naming Conventions
+| Type | Format | Example |
+|------|--------|---------|
+| Files | kebab-case | `image-combiner.tsx`, `use-toast.ts` |
+| Components | PascalCase | `ImageCombiner`, `Button` |
+| Hooks | camelCase with `use` | `useToast`, `useMobile` |
+| Functions | camelCase | `generateImage`, `handleSubmit` |
+| Constants | UPPER_SNAKE_CASE | `MAX_RETRIES`, `API_BASE_URL` |
+| Types/Interfaces | PascalCase | `ImageData`, `ApiResponse` |
+
+### Styling (Tailwind CSS 4)
+- **Use CSS variables** from `app/globals.css`: `bg-background`, `text-foreground`
+- Never hardcode colors like `bg-black` or `text-white`
+- Use `cn()` utility for conditional classes
+- Tailwind v4 syntax: `@import "tailwindcss"` (not `@tailwind`)
+
+### Components
+- Server Components by default (no `"use client"`)
+- Add `"use client"` only when using hooks, browser APIs, or event handlers
+- Use functional components only (no class components)
+- Forward refs for DOM elements using `React.forwardRef`
+
+### Error Handling
+```typescript
+// API routes: return structured error responses
+try {
+  // ... logic
+} catch (error) {
+  return NextResponse.json(
+    { error: "Descriptive message", errorType: "ERROR_CODE" },
+    { status: 500 }
+  )
+}
+
+// Client components: use try-catch with toast notifications
+try {
+  // ... logic
+} catch (error) {
+  toast({ 
+    title: "Error", 
+    description: error instanceof Error ? error.message : "Unknown error",
+    variant: "destructive"
+  })
+}
+```
+
+### Testing (Jest + ts-jest)
+- Test files: `__tests__/*.test.ts` or `__tests__/*.test.tsx`
+- Use `testEnvironment: 'jest-environment-node'` for API tests
+- Path aliases configured: `@/` maps to root
+- Run single test: `pnpm test -- filename.test.ts`
 
 ### Commits & Branches
 - **Format**: Conventional Commits (`feat:`, `fix:`, `chore:`, `refactor:`)
@@ -55,39 +112,27 @@ pnpm lint
 - **NEVER** expose server-side keys to client (no `NEXT_PUBLIC_` prefix for secrets)
 - Rate limiting bypass: `/g` route and `NODE_ENV=development` skip Redis checks
 
-## JIT Index - Directory Map
-
-### Project Structure
+## Project Structure
 ```
 open-banana/
 ├── app/                    # Next.js App Router
 │   ├── api/                # API Route Handlers
-│   │   ├── generate-image/ # Main image generation endpoint
-│   │   ├── improve-prompt/ # Prompt improvement endpoint
-│   │   └── proxy-image/    # Image proxy endpoint
 │   ├── g/                  # Bypass route (no rate limiting)
 │   ├── sign-in/            # Clerk sign-in page
 │   ├── sign-up/            # Clerk sign-up page
-│   ├── privacy-policy/     # Legal page
-│   ├── layout.tsx          # Root layout (Clerk, fonts, metadata)
+│   ├── layout.tsx          # Root layout
 │   ├── page.tsx            # Home page
-│   └── globals.css         # CSS variables & Tailwind config
-│   └── AGENTS.md           # [see app/AGENTS.md](app/AGENTS.md)
+│   └── globals.css         # CSS variables
 ├── components/             # React components
 │   ├── ui/                 # Shadcn UI primitives
-│   ├── image-combiner.tsx  # Main feature component
-│   ├── theme-provider.tsx  # next-themes provider
 │   └── AGENTS.md           # [see components/AGENTS.md](components/AGENTS.md)
 ├── hooks/                  # Custom React hooks
-│   ├── use-toast.ts        # Toast notifications
-│   └── use-mobile.ts       # Mobile detection
 ├── lib/                    # Utilities
-│   └── utils.ts            # cn() class merge utility
-├── public/                 # Static assets
-└── components.json         # Shadcn UI config
+├── __tests__/              # Jest test files
+└── public/                 # Static assets
 ```
 
-### Quick Find Commands
+## Quick Find Commands
 ```bash
 # Find API route handlers
 rg -n "export async function (GET|POST|PUT|DELETE)" app/api
@@ -103,24 +148,12 @@ rg -n "^\s*--" app/globals.css
 
 # Find hook usage
 rg -n "use[A-Z]\w+" --type ts
-
-# Find Clerk auth usage
-rg -n "@clerk/nextjs" .
 ```
-
-## Key Files Reference
-| Purpose | File |
-|---------|------|
-| Root Layout | `app/layout.tsx` |
-| Theme CSS | `app/globals.css` |
-| Main API | `app/api/generate-image/route.ts` |
-| Class Utility | `lib/utils.ts` |
-| Shadcn Config | `components.json` |
-| TypeScript Config | `tsconfig.json` |
 
 ## Definition of Done
 - [ ] Code passes `pnpm lint`
 - [ ] Project builds with `pnpm build`
+- [ ] Tests pass with `pnpm test`
 - [ ] Environment variables documented if changed
 - [ ] Responsive design verified for UI changes
 - [ ] API error handling returns appropriate status codes (400, 401, 429, 500)

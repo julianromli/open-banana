@@ -12,6 +12,8 @@ import { FalAIProvider } from "@/lib/ai-providers/fal-ai"
 import { ProviderError } from "@/lib/ai-providers/types"
 
 describe("FalAIProvider error mapping", () => {
+  const originalFalKey = process.env.FAL_KEY
+
   const input = {
     prompt: "spongebob",
     aspectRatio: "1:1",
@@ -24,7 +26,12 @@ describe("FalAIProvider error mapping", () => {
   })
 
   afterEach(() => {
-    delete process.env.FAL_KEY
+    if (originalFalKey === undefined) {
+      delete process.env.FAL_KEY
+      return
+    }
+
+    process.env.FAL_KEY = originalFalKey
   })
 
   test("maps 422 validation detail to retriable PROVIDER_VALIDATION_ERROR", async () => {
@@ -115,4 +122,3 @@ describe("FalAIProvider error mapping", () => {
     })
   })
 })
-

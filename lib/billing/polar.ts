@@ -72,11 +72,18 @@ function isActiveSubscriptionStatus(status: SubscriptionStatus | string): boolea
   return status === "active" || status === "trialing"
 }
 
+let hasWarnedMissingProProductId = false
+
 function isConfiguredProSubscription(productId: string): boolean {
   const configuredProProductId = getConfiguredProProductId()
   if (!configuredProProductId) {
-    // Fail-open for backward compatibility if env is not configured yet.
-    return true
+    if (!hasWarnedMissingProProductId) {
+      hasWarnedMissingProProductId = true
+      console.warn(
+        "[billing] POLAR_PRO_MONTHLY_PRODUCT_ID is not configured; defaulting to free tier entitlement checks."
+      )
+    }
+    return false
   }
   return productId === configuredProProductId
 }

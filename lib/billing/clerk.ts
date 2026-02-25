@@ -2,6 +2,10 @@ import { clerkClient } from "@clerk/nextjs/server"
 import { type BillingSnapshot, type ClerkBillingMetadata, type UserTier, type BillingStatus } from "@/lib/billing/types"
 
 type ClerkPublicMetadata = Record<string, unknown>
+type ClerkPrivateMetadata = Record<string, unknown>
+type ClerkBillingRecord = Record<string, unknown>
+
+const BILLING_STATUS_SET = new Set<string>(["active", "canceled", "past_due", "incomplete", "none"])
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -12,6 +16,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
+}
+
+function isBillingStatus(value: unknown): value is BillingStatus {
+  return typeof value === "string" && BILLING_STATUS_SET.has(value)
 }
 
 export function readTierFromPublicMetadata(metadata: unknown): UserTier {
@@ -27,7 +35,7 @@ export function readBillingFromPublicMetadata(metadata: unknown): ClerkBillingMe
     return undefined
   }
 
-  const subscriptionStatus = asString(billing.subscriptionStatus) as BillingStatus | undefined
+  const subscriptionStatus = isBillingStatus(billing.subscriptionStatus) ? billing.subscriptionStatus : undefined
 
   return {
     tier: billing.tier === "pro" ? "pro" : "free",
@@ -59,21 +67,31 @@ export async function updateUserBillingMetadata(userId: string, snapshot: Billin
   const currentUser = await client.users.getUser(userId)
 
   const current = (currentUser.publicMetadata ?? {}) as ClerkPublicMetadata
-  const nextBilling: ClerkBillingMetadata = {
+  const currentPrivate = (currentUser.privateMetadata ?? {}) as ClerkPrivateMetadata
+  const currentBilling = asRecord(currentPrivate.billing) ?? ({} as ClerkBillingRecord)
+
+  const nextPublicBilling: ClerkBillingMetadata = {
     tier: snapshot.tier,
     subscriptionStatus: snapshot.subscriptionStatus,
     currentPeriodEnd: snapshot.currentPeriodEnd,
+    updatedAt: new Date().toISOString(),
+  }
+  const nextPrivateBilling = {
+    ...currentBilling,
     polarCustomerId: snapshot.polarCustomerId,
     polarSubscriptionId: snapshot.polarSubscriptionId,
     polarPriceId: snapshot.polarPriceId,
-    updatedAt: new Date().toISOString(),
   }
 
   await client.users.updateUserMetadata(userId, {
     publicMetadata: {
       ...current,
       tier: snapshot.tier,
-      billing: nextBilling,
+      billing: nextPublicBilling,
+    },
+    privateMetadata: {
+      ...currentPrivate,
+      billing: nextPrivateBilling,
     },
   })
 }

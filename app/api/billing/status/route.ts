@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth, clerkClient } from "@clerk/nextjs/server"
 import { readBillingFromPublicMetadata, readTierFromPublicMetadata } from "@/lib/billing/clerk"
-import { type BillingStatus } from "@/lib/billing/types"
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -23,7 +22,7 @@ export async function GET(): Promise<NextResponse> {
 
     return NextResponse.json({
       tier,
-      subscriptionStatus: (billing?.subscriptionStatus ?? "none") as BillingStatus,
+      subscriptionStatus: billing?.subscriptionStatus ?? "none",
       currentPeriodEnd: billing?.currentPeriodEnd,
     })
   } catch (error) {

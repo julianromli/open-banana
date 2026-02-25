@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Dithering } from "@paper-design/shaders-react"
@@ -27,6 +28,13 @@ interface Generation {
   timestamp: number
   abortController?: AbortController
   thumbnailLoaded?: boolean
+}
+
+type GenerateImageErrorResponse = {
+  errorType?: string
+  message?: string
+  redirectUrl?: string
+  retryAfter?: number
 }
 
 const randomPrompts = [
@@ -129,6 +137,7 @@ const RENT_API_KEY_LINK = "https://wa.link/sbi0cp"
 
 export function ImageCombiner() {
   const isMobile = useMobile()
+  const router = useRouter()
 
   const [toastState, setToastState] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const [imageLoaded, setImageLoaded] = useState(false)
@@ -983,50 +992,11 @@ export function ImageCombiner() {
           })
 
           if (!response.ok) {
-            const errorData = await response.json().catch(() => ({
-              error: "Unknown error",
-              details: `Server returned ${response.status}`,
-              errorType: "UNKNOWN_ERROR",
-            }))
+            const errorData = (await response.json().catch(() => ({}))) as GenerateImageErrorResponse
 
             clearInterval(progressInterval)
 
-            let userFriendlyMessage = errorData.error || "Failed to generate image"
-            let detailedMessage = errorData.details || ""
-
-            // Handle specific error types
-            if (response.status === 429) {
-              if (errorData.resetTime) {
-                const resetDate = new Date(errorData.resetTime)
-                const resetTime = resetDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                userFriendlyMessage = `Rate limit reached. Try again after ${resetTime}`
-              } else {
-                userFriendlyMessage = "Too many requests. Please try again later or use your own API key."
-              }
-            } else if (response.status === 401) {
-              userFriendlyMessage = "Invalid API key"
-              detailedMessage = "Please check your API key and try again."
-            } else if (response.status === 403) {
-              userFriendlyMessage = "Access denied"
-              detailedMessage = "Your API key doesn't have permission to use this feature."
-            } else if (response.status === 400) {
-              // Content policy or invalid request
-              if (errorData.errorType === "CONTENT_POLICY_VIOLATION") {
-                userFriendlyMessage = "Content not allowed"
-                detailedMessage = "Your prompt may contain inappropriate content. Try a different description."
-              } else if (errorData.errorType === "IMAGE_ERROR") {
-                userFriendlyMessage = "Image format error"
-                detailedMessage = "Please use images in JPEG, PNG, or WebP format under 20MB."
-              } else {
-                userFriendlyMessage = "Invalid request"
-              }
-            } else if (response.status === 503 || response.status === 504) {
-              userFriendlyMessage = "Service temporarily unavailable"
-              detailedMessage = "The image generation service is experiencing issues. Please try again in a moment."
-            } else if (response.status >= 500) {
-              userFriendlyMessage = "Server error"
-              detailedMessage = "Something went wrong on our end. Please try again."
-            }
+            const userFriendlyMessage = errorData.message || "Something went wrong. Please try again."
 
             setGenerations((prev) =>
               prev.map((gen) =>
@@ -1042,7 +1012,13 @@ export function ImageCombiner() {
               ),
             )
 
-            showToast(detailedMessage ? `${userFriendlyMessage}: ${detailedMessage}` : userFriendlyMessage, "error")
+            showToast(userFriendlyMessage, "error")
+
+            if (response.status === 401 && errorData.redirectUrl) {
+              setTimeout(() => {
+                router.push(errorData.redirectUrl as string)
+              }, 400)
+            }
             return
           }
 
@@ -1094,21 +1070,13 @@ export function ImageCombiner() {
           let errorMessage = "Unknown error occurred"
 
           if (error instanceof TypeError) {
-            if (error.message.includes("fetch")) {
-              errorMessage = "Network error. Please check your connection and try again."
-            } else {
-              errorMessage = "Something went wrong. Please try again."
-            }
+            errorMessage = "Network issue detected. Please try again."
           } else if (error instanceof Error) {
             // Parse common error patterns
-            if (error.message.includes("timeout")) {
-              errorMessage = "Request timed out. Try a simpler prompt or smaller images."
-            } else if (error.message.includes("network")) {
-              errorMessage = "Network error. Please check your connection."
-            } else if (error.message.includes("quota") || error.message.includes("limit")) {
-              errorMessage = "API quota exceeded. Please try again later or use your own API key."
+            if (error.message.includes("timeout") || error.message.includes("network") || error.message.includes("fetch")) {
+              errorMessage = "Network issue detected. Please try again."
             } else {
-              errorMessage = error.message
+              errorMessage = "Something went wrong. Please try again."
             }
           }
 
@@ -1126,7 +1094,7 @@ export function ImageCombiner() {
             ),
           )
 
-          showToast(`Error: ${errorMessage}`, "error")
+          showToast(errorMessage, "error")
         }
       })()
 

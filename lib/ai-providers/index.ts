@@ -43,8 +43,8 @@ export function getPrimaryProviderType(): AIProviderType {
 }
 
 /**
- * Generate image with automatic fallback on retriable errors (401, 429, 5xx)
- * Does NOT fallback on 400 errors (bad request, content policy violation)
+ * Generate image with automatic fallback on retriable errors (401, 422, 429, 5xx)
+ * Does NOT fallback on non-retriable 4xx errors (e.g. content policy violations)
  */
 export async function generateImageWithFallback(
   input: GenerateImageInput

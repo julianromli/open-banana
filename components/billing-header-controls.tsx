@@ -80,8 +80,8 @@ export function BillingHeaderControls() {
         className={cn(
           "inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium",
           tier === "pro"
-            ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
-            : "border-gray-500/60 bg-black/20 text-gray-300"
+            ? "border-primary/60 bg-primary/10 text-primary"
+            : "border-border bg-muted/50 text-muted-foreground"
         )}
       >
         {tier === "pro" ? "Pro" : "Free"}

@@ -12,6 +12,13 @@ export type ClerkBillingMetadata = {
   updatedAt?: string
 }
 
+export type ClerkPublicBillingMetadata = {
+  tier: UserTier
+  subscriptionStatus?: BillingStatus
+  currentPeriodEnd?: string
+  updatedAt?: string
+}
+
 export type BillingSnapshot = {
   tier: UserTier
   subscriptionStatus: BillingStatus

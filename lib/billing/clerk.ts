@@ -1,5 +1,10 @@
 import { clerkClient } from "@clerk/nextjs/server"
-import { type BillingSnapshot, type ClerkBillingMetadata, type UserTier, type BillingStatus } from "@/lib/billing/types"
+import {
+  type BillingSnapshot,
+  type ClerkPublicBillingMetadata,
+  type UserTier,
+  type BillingStatus,
+} from "@/lib/billing/types"
 
 type ClerkPublicMetadata = Record<string, unknown>
 type ClerkPrivateMetadata = Record<string, unknown>
@@ -27,7 +32,7 @@ export function readTierFromPublicMetadata(metadata: unknown): UserTier {
   return record?.tier === "pro" ? "pro" : "free"
 }
 
-export function readBillingFromPublicMetadata(metadata: unknown): ClerkBillingMetadata | undefined {
+export function readBillingFromPublicMetadata(metadata: unknown): ClerkPublicBillingMetadata | undefined {
   const record = asRecord(metadata)
   const billing = asRecord(record?.billing)
 
@@ -39,9 +44,6 @@ export function readBillingFromPublicMetadata(metadata: unknown): ClerkBillingMe
 
   return {
     tier: billing.tier === "pro" ? "pro" : "free",
-    polarCustomerId: asString(billing.polarCustomerId),
-    polarSubscriptionId: asString(billing.polarSubscriptionId),
-    polarPriceId: asString(billing.polarPriceId),
     subscriptionStatus,
     currentPeriodEnd: asString(billing.currentPeriodEnd),
     updatedAt: asString(billing.updatedAt),
@@ -70,7 +72,7 @@ export async function updateUserBillingMetadata(userId: string, snapshot: Billin
   const currentPrivate = (currentUser.privateMetadata ?? {}) as ClerkPrivateMetadata
   const currentBilling = asRecord(currentPrivate.billing) ?? ({} as ClerkBillingRecord)
 
-  const nextPublicBilling: ClerkBillingMetadata = {
+  const nextPublicBilling: ClerkPublicBillingMetadata = {
     tier: snapshot.tier,
     subscriptionStatus: snapshot.subscriptionStatus,
     currentPeriodEnd: snapshot.currentPeriodEnd,

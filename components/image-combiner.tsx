@@ -1479,7 +1479,7 @@ export function ImageCombiner() {
                   </svg>
                   <div className="text-xs text-gray-300 space-y-1">
                     <p className="font-medium">Optional: Use Your Own API Key</p>
-                    <p>Add your BytePlus API key to bypass the 2 generations/day rate limit and use your own quota.</p>
+                    <p>Add your BytePlus API key to bypass the 5 generations/day free-tier rate limit and use your own quota.</p>
                     <p className="text-gray-400">
                       Get your API key at{" "}
                       <a

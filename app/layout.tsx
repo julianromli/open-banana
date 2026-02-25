@@ -11,6 +11,7 @@ import {
   SignedOut,
   UserButton,
 } from "@clerk/nextjs"
+import { BillingHeaderControls } from "@/components/billing-header-controls"
 import "./globals.css"
 
 import { Inter, JetBrains_Mono, Libre_Baskerville as V0_Font_Libre_Baskerville, IBM_Plex_Mono as V0_Font_IBM_Plex_Mono, Lora as V0_Font_Lora } from 'next/font/google'
@@ -34,7 +35,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Free AI Image Generator | Open Banana - Create & Edit Images Online",
   description:
-    "Generate and edit stunning images with Open Banana's free AI image generator. Powered by Gemini 2.5 Flash. No signup required. Create AI images instantly.",
+    "Generate and edit stunning images with Open Banana's free AI image generator. Powered by Gemini 2.5 Flash. Sign in to generate and create AI images instantly.",
   keywords:
     "free ai image generator, ai image generator, free ai image, nano banana, edit image ai, image generator, ai art generator, free image creator",
   authors: [{ name: "Faiz Intifada", url: "https://www.threads.net/@faizintifada" }],
@@ -58,7 +59,7 @@ export const metadata: Metadata = {
     siteName: "Open Banana",
     title: "Free AI Image Generator | Open Banana - Create & Edit Images",
     description:
-      "Generate and edit stunning images with Open Banana's free AI image generator. Powered by Gemini 2.5 Flash. No signup required.",
+      "Generate and edit stunning images with Open Banana's free AI image generator. Powered by Gemini 2.5 Flash. Sign in to generate.",
     images: [
       {
         url: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe",
@@ -71,7 +72,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Free AI Image Generator | Open Banana",
-    description: "Generate and edit stunning images with AI. Powered by Gemini 2.5 Flash. Free, no signup required.",
+    description: "Generate and edit stunning images with AI. Powered by Gemini 2.5 Flash. Free tier available.",
     creator: "@faizintifada",
     images: ["https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe"],
   },
@@ -155,7 +156,7 @@ export default async function RootLayout({
                     "@id": "https://open-banana.vercel.app/#webpage",
                     url: "https://open-banana.vercel.app/",
                     name: "Free AI Image Generator | Open Banana",
-                    description: "Generate and edit stunning images with AI. No signup required.",
+                    description: "Generate and edit stunning images with AI. Sign in to generate.",
                     isPartOf: {
                       "@id": "https://open-banana.vercel.app/#website",
                     },
@@ -183,6 +184,7 @@ export default async function RootLayout({
               </SignUpButton>
             </SignedOut>
             <SignedIn>
+              <BillingHeaderControls />
               <UserButton />
             </SignedIn>
           </header>

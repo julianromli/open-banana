@@ -7,7 +7,7 @@ export default function Home() {
         <h1>Free AI Image Generator - Open Banana</h1>
         <p>
           Create and edit stunning images with AI. Powered by Gemini 2.5 Flash. Generate AI images from text, edit and
-          combine multiple images. Free, no signup required, instant results.
+          combine multiple images. Free tier available, sign in to generate, instant results.
         </p>
       </div>
       <ImageCombiner />

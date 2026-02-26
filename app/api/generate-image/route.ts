@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
           429,
           {
             errorType: "RATE_LIMIT_EXCEEDED",
-            message: getUserMessageForErrorType("RATE_LIMIT_EXCEEDED"),
+            message: TIER_CONFIGS[rateLimitInfo.tier].rateLimitMessage,
             tier: rateLimitInfo.tier,
             limit: rateLimitInfo.limit,
             resetTime: rateLimitInfo.resetTime,

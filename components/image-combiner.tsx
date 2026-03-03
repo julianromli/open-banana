@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { BillingHeaderControls } from "@/components/billing-header-controls"
 import { cn } from "@/lib/utils"
 import { Dithering } from "@paper-design/shaders-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -1422,7 +1423,10 @@ export function ImageCombiner() {
                 OPEN BANANA
                 <span className="sr-only"> - Free AI Image Generator</span>
               </h1>
-              <div className="hidden flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <BillingHeaderControls />
+              </div>
+              <div className="hidden items-center gap-2">
                 <Button
                   onClick={() => window.open(RENT_API_KEY_LINK, "_blank")}
                   variant="outline"

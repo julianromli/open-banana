@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useUser } from "@clerk/nextjs"
+import { UserButton, useUser } from "@clerk/nextjs"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -94,7 +94,6 @@ export function BillingHeaderControls() {
       setIsLoading(false)
     }
   }
-
   const openPortal = async () => {
     setIsLoading(true)
     try {
@@ -154,6 +153,8 @@ export function BillingHeaderControls() {
           Upgrade to Pro
         </Button>
       )}
+
+      {isSignedIn ? <UserButton /> : null}
 
       <Dialog open={isUpgradeDialogOpen} onOpenChange={setIsUpgradeDialogOpen}>
         <DialogContent className="max-w-md border-border/70 bg-background/95 p-0 backdrop-blur-sm">

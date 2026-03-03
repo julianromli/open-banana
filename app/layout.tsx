@@ -11,7 +11,6 @@ import {
   SignedOut,
   UserButton,
 } from "@clerk/nextjs"
-import { BillingHeaderControls } from "@/components/billing-header-controls"
 import "./globals.css"
 
 import { Inter, JetBrains_Mono, Libre_Baskerville as V0_Font_Libre_Baskerville, IBM_Plex_Mono as V0_Font_IBM_Plex_Mono, Lora as V0_Font_Lora } from 'next/font/google'
@@ -184,7 +183,6 @@ export default async function RootLayout({
               </SignUpButton>
             </SignedOut>
             <SignedIn>
-              <BillingHeaderControls />
               <UserButton />
             </SignedIn>
           </header>

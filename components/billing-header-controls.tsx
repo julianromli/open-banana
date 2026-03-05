@@ -164,7 +164,7 @@ export function BillingHeaderControls() {
                 {product?.title ?? "Upgrade to Pro"}
               </DialogTitle>
               <DialogDescription>
-                Unlock higher daily generation limits and priority access.
+                Unlock higher weekly generation limits and priority access.
               </DialogDescription>
             </DialogHeader>
 
@@ -179,7 +179,7 @@ export function BillingHeaderControls() {
                 <p className="text-sm text-destructive">{productError}</p>
               ) : (
                 <ul className="space-y-2 text-sm text-foreground">
-                  {(product?.benefits.length ? product.benefits : ["100 generations per day"]).map(
+                  {(product?.benefits.length ? product.benefits : ["100 generations per week"]).map(
                     (benefit) => (
                       <li key={benefit} className="leading-relaxed">
                         {benefit}

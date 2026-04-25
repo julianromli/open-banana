@@ -34,9 +34,9 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Free AI Image Generator | Open Banana - Create & Edit Images Online",
   description:
-    "Generate and edit stunning images with Open Banana's free AI image generator. Powered by Gemini 2.5 Flash. Sign in to generate and create AI images instantly.",
+    "Generate and edit stunning images with Open Banana's free AI image generator. Powered by Nano Banana 2. Sign in to generate and create AI images instantly.",
   keywords:
-    "free ai image generator, ai image generator, free ai image, nano banana, edit image ai, image generator, ai art generator, free image creator",
+    "free ai image generator, ai image generator, free ai image, nano banana, nano banana 2, edit image ai, image generator, ai art generator, free image creator",
   authors: [{ name: "Faiz Intifada", url: "https://www.threads.net/@faizintifada" }],
   creator: "Faiz Intifada",
   publisher: "Open Banana",
@@ -58,7 +58,7 @@ export const metadata: Metadata = {
     siteName: "Open Banana",
     title: "Free AI Image Generator | Open Banana - Create & Edit Images",
     description:
-      "Generate and edit stunning images with Open Banana's free AI image generator. Powered by Gemini 2.5 Flash. Sign in to generate.",
+      "Generate and edit stunning images with Open Banana's free AI image generator. Powered by Nano Banana 2. Sign in to generate.",
     images: [
       {
         url: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe",
@@ -71,7 +71,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Free AI Image Generator | Open Banana",
-    description: "Generate and edit stunning images with AI. Powered by Gemini 2.5 Flash. Free tier available.",
+    description: "Generate and edit stunning images with AI. Powered by Nano Banana 2. Free tier available.",
     creator: "@faizintifada",
     images: ["https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe"],
   },
@@ -142,7 +142,7 @@ export default async function RootLayout({
                     },
                     operatingSystem: "Web Browser",
                     description:
-                      "Free AI image generator powered by Gemini 2.5 Flash. Create and edit stunning images with artificial intelligence.",
+                      "Free AI image generator powered by Nano Banana 2. Create and edit stunning images with artificial intelligence.",
                     screenshot: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNFsDt8oH1P04aAtJ7bsxYMZFTpWVcnBz9jLhe",
                     aggregateRating: {
                       "@type": "AggregateRating",

@@ -135,6 +135,14 @@ export class FalAIProvider implements ImageProvider {
   ): Promise<GenerateImageOutput> {
     console.log("[v0] API: fal.ai - Calling text-to-image API")
 
+    // fal.ai uses presets; quality/style are not directly supported via this model
+    if (input.quality && input.quality !== "1K") {
+      console.log(`[v0] API: fal.ai - Note: quality ${input.quality} not supported, using preset size`)
+    }
+    if (input.style && input.style !== "dynamic") {
+      console.log(`[v0] API: fal.ai - Note: style ${input.style} not supported by fallback model`)
+    }
+
     const result = await fal.subscribe(TEXT_TO_IMAGE_MODEL, {
       input: {
         prompt: input.prompt,
@@ -171,6 +179,14 @@ export class FalAIProvider implements ImageProvider {
     imageSize: string
   ): Promise<GenerateImageOutput> {
     console.log("[v0] API: fal.ai - Calling image editing API")
+
+    // fal.ai uses presets; quality/style are not directly supported via this model
+    if (input.quality && input.quality !== "1K") {
+      console.log(`[v0] API: fal.ai - Note: quality ${input.quality} not supported, using preset size`)
+    }
+    if (input.style && input.style !== "dynamic") {
+      console.log(`[v0] API: fal.ai - Note: style ${input.style} not supported by fallback model`)
+    }
 
     const result = await fal.subscribe(IMAGE_EDITING_MODEL, {
       input: {

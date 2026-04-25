@@ -226,16 +226,29 @@ export async function POST(request: NextRequest) {
     const mode = formData.get("mode") as string
     const prompt = formData.get("prompt") as string
     const aspectRatio = formData.get("aspectRatio") as string
+    const quality = formData.get("quality") as string
+    const style = (formData.get("style") as string) || "dynamic"
 
     console.log("[v0] API: Mode:", mode)
     console.log("[v0] API: Prompt:", prompt)
     console.log("[v0] API: Aspect Ratio:", aspectRatio)
+    console.log("[v0] API: Quality:", quality)
+    console.log("[v0] API: Style:", style)
 
     if (!mode || !prompt) {
       console.log("[v0] API: Missing required fields")
       return buildErrorResponse(400, {
         errorType: "INVALID_REQUEST",
         message: getUserMessageForErrorType("INVALID_REQUEST"),
+      })
+    }
+
+    const validQualities = ["1K", "2K", "4K"]
+    if (quality && !validQualities.includes(quality)) {
+      console.log("[v0] API: Invalid quality:", quality)
+      return buildErrorResponse(400, {
+        errorType: "INVALID_REQUEST",
+        message: "Invalid quality. Must be one of: 1K, 2K, 4K.",
       })
     }
 
@@ -293,6 +306,8 @@ export async function POST(request: NextRequest) {
       aspectRatio: aspectRatio || "1:1",
       mode: mode as "text-to-image" | "image-editing",
       images: imageDataUris.length > 0 ? imageDataUris : undefined,
+      quality: (quality as "1K" | "2K" | "4K") || "1K",
+      style,
     })
 
     const responseHeaders: Record<string, string> = {}

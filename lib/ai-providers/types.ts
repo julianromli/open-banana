@@ -1,10 +1,14 @@
-export type AIProviderType = "BYTEPLUS" | "FAL-AI"
+export type AIProviderType = "NANO_BANANA" | "BYTEPLUS" | "FAL-AI"
+
+export type ImageQuality = "1K" | "2K" | "4K"
 
 export interface GenerateImageInput {
   prompt: string
   aspectRatio: string
   mode: "text-to-image" | "image-editing"
   images?: string[] // base64 data URIs for editing mode
+  quality?: ImageQuality
+  style?: string
 }
 
 export interface GenerateImageOutput {

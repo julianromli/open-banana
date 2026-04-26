@@ -186,6 +186,7 @@ export function ImageCombiner() {
       : null
 
   const [aspectRatio, setAspectRatio] = useState<string>("1:1")
+  const [quality, setQuality] = useState<string>("1K")
   const [numVariations, setNumVariations] = useState(1)
   const [availableAspectRatios, setAvailableAspectRatios] = useState<
     Array<{ value: string; label: string; ratio: number; icon: React.ReactNode }>
@@ -282,7 +283,7 @@ export function ImageCombiner() {
   }, [])
 
   useEffect(() => {
-    const savedApiKey = localStorage.getItem("byteplus-api-key") // Updated key
+    const savedApiKey = localStorage.getItem("imaginer-api-key")
     if (savedApiKey) {
       setUserApiKey(savedApiKey)
     }
@@ -963,6 +964,8 @@ export function ImageCombiner() {
           formData.append("mode", currentMode)
           formData.append("prompt", prompt)
           formData.append("aspectRatio", aspectRatio)
+          formData.append("quality", quality)
+          formData.append("style", "dynamic")
 
           if (currentMode === "image-editing") {
             if (useUrls) {
@@ -1291,9 +1294,9 @@ export function ImageCombiner() {
   const handleApiKeyChange = (key: string) => {
     setUserApiKey(key)
     if (key) {
-      localStorage.setItem("byteplus-api-key", key) // Updated key
+      localStorage.setItem("imaginer-api-key", key)
     } else {
-      localStorage.removeItem("byteplus-api-key") // Updated key
+      localStorage.removeItem("imaginer-api-key")
     }
   }
 
@@ -1483,27 +1486,27 @@ export function ImageCombiner() {
                   </svg>
                   <div className="text-xs text-gray-300 space-y-1">
                     <p className="font-medium">Optional: Use Your Own API Key</p>
-                    <p>Add your BytePlus API key to bypass the 5 generations/day free-tier rate limit and use your own quota.</p>
+                    <p>Add your Imaginer API key to bypass the 5 generations/day free-tier rate limit and use your own quota.</p>
                     <p className="text-gray-400">
                       Get your API key at{" "}
                       <a
-                        href="https://console.byteplus.com"
+                        href="https://console.imaginer.ai"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-400 hover:underline"
                       >
-                        BytePlus Console
+                        Imaginer Console
                       </a>
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-2">
-                  <input
+                      <input
                     type="password"
                     value={userApiKey}
                     onChange={(e) => handleApiKeyChange(e.target.value)}
-                    placeholder="Enter your BytePlus API key..."
+                    placeholder="Enter your Imaginer API key..."
                     className="flex-1 p-2 bg-black/50 border border-gray-600 text-white text-xs focus:outline-none focus:ring-2 focus:ring-white rounded select-text"
                   />
                   {userApiKey && (
@@ -1569,6 +1572,24 @@ export function ImageCombiner() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <Select value={quality} onValueChange={setQuality}>
+                      <SelectTrigger
+                        size="sm"
+                        className="w-20 sm:w-24 md:w-28 !h-7 md:!h-10 bg-black/50 border-gray-600 text-white text-xs md:text-sm !px-2 !py-0 md:!px-4 md:!py-0 whitespace-nowrap flex items-center rounded-none [&>span]:leading-none [&>span]:flex [&>span]:items-center min-h-0"
+                      >
+                        <SelectValue placeholder="1K" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-black/95 border-gray-600 text-white z-50">
+                        <SelectItem value="1K" className="text-xs md:text-sm">1K (Standard)</SelectItem>
+                        <SelectItem value="2K" className="text-xs md:text-sm">2K (High)</SelectItem>
+                        <SelectItem value="4K" className="text-xs md:text-sm">4K (Ultra)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="inline-flex h-7 md:h-10 bg-black/50 border border-gray-600 px-2 py-0 md:px-3 md:py-0 flex-shrink-0 items-center rounded-none">
+                      <span className="text-xs md:text-sm font-medium text-gray-300 whitespace-nowrap leading-none flex items-center">
+                        Style: Dynamic
+                      </span>
+                    </div>
                     <div className="inline-flex h-7 md:h-10 bg-black/50 border border-gray-600 px-2 py-0 md:px-4 md:py-0 flex-shrink-0 items-center rounded-none">
                       <span className="text-xs md:text-sm font-medium text-gray-300 whitespace-nowrap leading-none flex items-center">
                         {currentMode === "text-to-image" ? "Text-to-Image" : "Image-to-Image"}

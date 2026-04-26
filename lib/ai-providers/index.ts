@@ -1,5 +1,6 @@
 import type { AIProviderType, ImageProvider, GenerateImageInput, GenerateImageOutput } from "./types"
 import { ProviderError } from "./types"
+import { nanoBananaProvider } from "./nano-banana"
 import { bytePlusProvider } from "./byteplus"
 import { falAIProvider } from "./fal-ai"
 
@@ -9,7 +10,8 @@ export { ProviderError }
 
 // All available providers
 const providers: Record<AIProviderType, ImageProvider> = {
-  BYTEPLUS: bytePlusProvider,
+  "NANO_BANANA": nanoBananaProvider,
+  "BYTEPLUS": bytePlusProvider,
   "FAL-AI": falAIProvider,
 }
 
@@ -39,7 +41,10 @@ export function getPrimaryProviderType(): AIProviderType {
   if (envValue === "FAL-AI" || envValue === "FALAI" || envValue === "FAL") {
     return "FAL-AI"
   }
-  return "BYTEPLUS" // default
+  if (envValue === "BYTEPLUS" || envValue === "BYTE_PLUS") {
+    return "BYTEPLUS"
+  }
+  return "NANO_BANANA" // default
 }
 
 /**
@@ -54,7 +59,7 @@ export async function generateImageWithFallback(
 
   if (configuredProviders.length === 0) {
     throw new ProviderError(
-      "No AI providers configured. Please set BYTEPLUS_API_KEY or FAL_KEY.",
+      "No AI providers configured. Please set IMAGINER_KEY, BYTEPLUS_API_KEY, or FAL_KEY.",
       500,
       "NO_PROVIDER_CONFIGURED",
       false

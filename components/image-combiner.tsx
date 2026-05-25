@@ -8,6 +8,7 @@ import { BillingHeaderControls } from "@/components/billing-header-controls"
 import { cn } from "@/lib/utils"
 import { Dithering } from "@paper-design/shaders-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Slider } from "@/components/ui/slider"
 import { useMobile } from "@/hooks/use-mobile"
 import { useToast } from "@/hooks/use-toast" // Assuming useToast is available and imported
 import { Sparkles, RotateCcw, Loader2, Copy } from "lucide-react" // Added Copy icon
@@ -29,6 +30,7 @@ interface Generation {
   timestamp: number
   abortController?: AbortController
   thumbnailLoaded?: boolean
+  batchId?: string
 }
 
 type GenerateImageErrorResponse = {
@@ -184,6 +186,14 @@ export function ImageCombiner() {
     selectedGeneration?.status === "complete" && selectedGeneration.imageUrl
       ? { url: selectedGeneration.imageUrl, prompt: selectedGeneration.prompt }
       : null
+
+  const currentBatchId = selectedGeneration?.batchId
+  const currentBatchCompleteGens = currentBatchId
+    ? generations.filter(
+        (g) => g.batchId === currentBatchId && g.status === "complete" && g.imageUrl
+      )
+    : []
+  const showGrid = currentBatchCompleteGens.length > 1
 
   const [aspectRatio, setAspectRatio] = useState<string>("1:1")
   const [quality, setQuality] = useState<string>("1K")
@@ -647,6 +657,8 @@ export function ImageCombiner() {
       const result = e.target?.result as string
       console.log("[v0] Image loaded successfully, setting preview for image", imageNumber)
 
+      // Auto-detect aspect ratio from the preview image blob
+      const previewUrl = result
       const img = new Image()
       img.onload = () => {
         const isFirstImage = imageNumber === 1 || (!image1 && !image1Preview && !image1Url)
@@ -660,24 +672,24 @@ export function ImageCombiner() {
           console.log("[v0] Skipping aspect ratio detection for second image")
         }
       }
-      img.src = result
+      img.src = previewUrl
 
       if (imageNumber === 1) {
-        setImage1(processedFile) // Use processed file instead of original
-        setImage1Preview(result)
-        console.log("[v0] Image 1 preview set:", result.substring(0, 50) + "...")
+        setImage1(processedFile)
+        setImage1Preview(previewUrl)
+        console.log("[v0] Image 1 preview set:", previewUrl.substring(0, 50) + "...")
       }
       if (imageNumber === 2) {
-        setImage2(processedFile) // Use processed file instead of original
-        setImage2Preview(result)
-        console.log("[v0] Image 2 preview set:", result.substring(0, 50) + "...")
+        setImage2(processedFile)
+        setImage2Preview(previewUrl)
+        console.log("[v0] Image 2 preview set:", previewUrl.substring(0, 50) + "...")
       }
     }
     reader.onerror = (error) => {
       console.error("[v0] Error reading file:", error)
       showToast("Error reading the image file. Please try again.", "error")
     }
-    reader.readAsDataURL(processedFile) // Read processed file instead of original
+    reader.readAsDataURL(processedFile)
   }
 
   const handleDrop = (e: React.DragEvent, imageNumber: 1 | 2) => {
@@ -909,9 +921,10 @@ export function ImageCombiner() {
     if (!prompt.trim()) return
 
     const generationPromises = []
+    const batchId = `batch-${Date.now()}`
 
     for (let i = 0; i < numVariations; i++) {
-      const generationId = `gen-${Date.now()}-${Math.random().toString(36).substring(7)}`
+      const generationId = `gen-${Date.now()}-${i}-${Math.random().toString(36).substring(7)}`
       const controller = new AbortController()
 
       const newGeneration: Generation = {
@@ -920,8 +933,9 @@ export function ImageCombiner() {
         progress: 0,
         imageUrl: null,
         prompt: prompt,
-        timestamp: Date.now() + i, // Add offset to ensure unique timestamps
+        timestamp: Date.now() + i,
         abortController: controller,
+        batchId,
       }
 
       setGenerations((prev) => [newGeneration, ...prev])
@@ -931,7 +945,7 @@ export function ImageCombiner() {
         setSelectedGenerationId(generationId)
       }
 
-      // Start progress interval for this generation
+      // Start progress interval for this generation (arch ~20s to 98%)
       const progressInterval = setInterval(() => {
         setGenerations((prev) =>
           prev.map((gen) => {
@@ -940,22 +954,20 @@ export function ImageCombiner() {
                 gen.progress >= 98
                   ? 98
                   : gen.progress >= 96
-                    ? gen.progress + 0.2
+                    ? gen.progress + 0.1
                     : gen.progress >= 90
-                      ? gen.progress + 0.5
+                      ? gen.progress + 0.3
                       : gen.progress >= 75
-                        ? gen.progress + 0.8
+                        ? gen.progress + 0.6
                         : gen.progress >= 50
-                          ? gen.progress + 1
-                          : gen.progress >= 25
-                            ? gen.progress + 1.2
-                            : gen.progress + 1.5
+                          ? gen.progress + 1.0
+                          : gen.progress + 1.5
               return { ...gen, progress: Math.min(next, 98) }
             }
             return gen
           }),
         )
-      }, 100)
+      }, 200)
 
       // Create the generation promise
       const generationPromise = (async () => {
@@ -1590,6 +1602,22 @@ export function ImageCombiner() {
                         Style: Dynamic
                       </span>
                     </div>
+                    <div className="hidden md:inline-flex h-10 bg-black/50 border border-gray-600 px-3 py-0 flex-shrink-0 items-center gap-2 rounded-none">
+                      <span className="text-xs font-medium text-gray-300 whitespace-nowrap leading-none flex items-center">
+                        Var:
+                      </span>
+                      <Slider
+                        value={[numVariations]}
+                        onValueChange={(v) => setNumVariations(v[0])}
+                        min={1}
+                        max={4}
+                        step={1}
+                        className="w-20"
+                      />
+                      <span className="text-xs font-bold text-white whitespace-nowrap leading-none flex items-center w-4 text-center">
+                        {numVariations}
+                      </span>
+                    </div>
                     <div className="inline-flex h-7 md:h-10 bg-black/50 border border-gray-600 px-2 py-0 md:px-4 md:py-0 flex-shrink-0 items-center rounded-none">
                       <span className="text-xs md:text-sm font-medium text-gray-300 whitespace-nowrap leading-none flex items-center">
                         {currentMode === "text-to-image" ? "Text-to-Image" : "Image-to-Image"}
@@ -2075,35 +2103,66 @@ export function ImageCombiner() {
                   </div>
                 ) : generatedImage ? (
                   <div className="w-full h-full flex flex-col select-none">
-                    <div className="flex-1 flex items-center justify-center max-h-36 md:max-h-64 relative group">
-                      <img
-                        src={generatedImage.url || "/placeholder.svg"}
-                        alt="Generated"
-                        className={cn(
-                          "max-w-full max-h-full object-contain rounded transition-all duration-700 ease-out",
-                          imageLoaded ? "opacity-100 scale-100" : "opacity-0 scale-95",
-                        )}
-                        onLoad={() => {
-                          console.log("[v0] Preview image loaded")
-                          setImageLoaded(true)
-                        }}
-                        onClick={openFullscreen}
-                      />
-                      <button
-                        onClick={openFullscreen}
-                        className="absolute top-1 right-1 md:top-2 md:right-2 bg-black/70 hover:bg-black/90 text-white p-1 md:p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10"
-                        title="View fullscreen"
-                      >
-                        <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-                          />
-                        </svg>
-                      </button>
-                    </div>
+                    {showGrid ? (
+                      <div className="flex-1 overflow-auto select-none">
+                        <div className="grid grid-cols-2 gap-2 p-1">
+                          {currentBatchCompleteGens.map((gen) => (
+                            <button
+                              key={gen.id}
+                              onClick={() => setSelectedGenerationId(gen.id)}
+                              className={cn(
+                                "relative aspect-square rounded-lg overflow-hidden border-2 transition-all hover:scale-[1.02] cursor-pointer",
+                                selectedGeneration?.id === gen.id
+                                  ? "border-white shadow-lg"
+                                  : "border-gray-700 hover:border-gray-500"
+                              )}
+                            >
+                              <img
+                                src={gen.imageUrl || "/placeholder.svg"}
+                                alt={`Variation ${gen.id}`}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                              />
+                              {gen.id === selectedGeneration?.id && (
+                                <span className="absolute top-1 left-1 bg-white/90 text-black text-[10px] font-bold px-1.5 py-0.5 rounded pointer-events-none">
+                                  Current
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center max-h-36 md:max-h-64 relative group">
+                        <img
+                          src={generatedImage.url || "/placeholder.svg"}
+                          alt="Generated"
+                          className={cn(
+                            "max-w-full max-h-full object-contain rounded transition-all duration-700 ease-out",
+                            imageLoaded ? "opacity-100 scale-100" : "opacity-0 scale-95",
+                          )}
+                          onLoad={() => {
+                            console.log("[v0] Preview image loaded")
+                            setImageLoaded(true)
+                          }}
+                          onClick={openFullscreen}
+                        />
+                        <button
+                          onClick={openFullscreen}
+                          className="absolute top-1 right-1 md:top-2 md:right-2 bg-black/70 hover:bg-black/90 text-white p-1 md:p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10"
+                          title="View fullscreen"
+                        >
+                          <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                     {generatedImage && (
                       <>
                         <div className="mt-2 md:mt-4 mb-12 md:mb-8 p-3 md:p-3 bg-black/50 border border-gray-600 rounded">

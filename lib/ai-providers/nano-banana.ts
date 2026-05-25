@@ -3,32 +3,46 @@ import { ProviderError } from "./types"
 
 const IMAGINER_BASE_URL = "https://imaginer.mirava.studio"
 
-function dataUriToBlob(dataUri: string): Blob {
-  const match = dataUri.match(/^data:(.+);base64,(.*)$/)
-  if (!match) {
-    throw new Error("Invalid data URI")
+function getApiKey(): string {
+  const key = process.env.IMAGINER_KEY
+  if (!key) {
+    throw new ProviderError(
+      "Imaginer API key not configured",
+      500,
+      "PROVIDER_NOT_CONFIGURED",
+      false
+    )
   }
-  const [, mimeType, base64] = match
-  const buffer = Buffer.from(base64, "base64")
-  return new Blob([buffer], { type: mimeType })
+  return key
 }
 
-async function uploadReferenceImage(apiKey: string, base64DataUri: string): Promise<string> {
-  const blob = dataUriToBlob(base64DataUri)
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    return response
+  } finally {
+    clearTimeout(id)
+  }
+}
+
+async function uploadReferenceImage(apiKey: string, blob: Blob): Promise<string> {
   const formData = new FormData()
   formData.append("image", blob, "reference.png")
 
-  const response = await fetch(`${IMAGINER_BASE_URL}/api/public/v1/upload`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
+  const response = await fetchWithTimeout(
+    `${IMAGINER_BASE_URL}/api/public/v1/upload`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: formData,
     },
-    body: formData,
-  })
+    30000
+  )
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
-    console.error("[v0] API: NanoBanana - Upload error:", errorData)
     throw new ProviderError(
       errorData.message || `Failed to upload reference image: ${response.status}`,
       response.status,
@@ -42,26 +56,30 @@ async function uploadReferenceImage(apiKey: string, base64DataUri: string): Prom
     throw new ProviderError("No image_id returned from upload", 500, "UPLOAD_FAILED", true)
   }
 
-  console.log("[v0] API: NanoBanana - Reference image uploaded:", data.image_id)
   return data.image_id as string
 }
 
-async function pollGenerationStatus(apiKey: string, generationId: string): Promise<string> {
-  const maxAttempts = 60 // 60 attempts * 2 seconds = 120 seconds max
-  const pollInterval = 2000 // 2 seconds
+async function pollGenerationStatus(
+  apiKey: string,
+  generationId: string,
+  onProgress?: (progress: number, status: string) => void
+): Promise<string> {
+  const maxAttempts = 120 // 120 attempts * 2 seconds = 240 seconds max (4 min)
+  const pollInterval = 2000
 
   for (let i = 0; i < maxAttempts; i++) {
-    const response = await fetch(`${IMAGINER_BASE_URL}/api/public/v1/generate/${generationId}`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
+    const response = await fetchWithTimeout(
+      `${IMAGINER_BASE_URL}/api/public/v1/generate/${generationId}`,
+      {
+        headers: { Authorization: `Bearer ${apiKey}` },
       },
-    })
+      15000
+    )
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error("[v0] API: NanoBanana - Poll error:", errorData)
       throw new ProviderError(
-        `Failed to check generation status: ${response.status}`,
+        errorData.message || `Failed to check generation status: ${response.status}`,
         response.status,
         "POLL_FAILED",
         response.status === 429 || response.status >= 500
@@ -71,10 +89,9 @@ async function pollGenerationStatus(apiKey: string, generationId: string): Promi
     const data = await response.json()
 
     if (data.status === "success") {
-      if (!data.urls || data.urls.length === 0) {
+      if (!Array.isArray(data.urls) || data.urls.length === 0) {
         throw new ProviderError("No image URLs in success response", 500, "NO_OUTPUT", true)
       }
-      console.log("[v0] API: NanoBanana - Generation complete:", generationId)
       return data.urls[0] as string
     }
 
@@ -87,12 +104,8 @@ async function pollGenerationStatus(apiKey: string, generationId: string): Promi
       )
     }
 
-    // processing or polling - log progress and wait
-    if (data.progress !== undefined) {
-      console.log(`[v0] API: NanoBanana - Generation ${generationId} progress: ${data.progress}%`)
-    } else {
-      console.log(`[v0] API: NanoBanana - Generation ${generationId} status: ${data.status}`)
-    }
+    // Report real progress to caller
+    onProgress?.(data.progress ?? 0, data.status)
 
     await new Promise((resolve) => setTimeout(resolve, pollInterval))
   }
@@ -108,23 +121,26 @@ export class NanoBananaProvider implements ImageProvider {
   }
 
   async generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
-    const apiKey = process.env.IMAGINER_KEY
+    const apiKey = getApiKey()
 
-    if (!apiKey) {
-      throw new ProviderError(
-        "Imaginer API key not configured",
-        500,
-        "PROVIDER_NOT_CONFIGURED",
-        false
-      )
-    }
-
-    // Upload reference images if provided
+    // Upload reference images if provided (expects File/Blob in input, not base64)
     const refImageIds: string[] = []
     if (input.images && input.images.length > 0) {
-      console.log(`[v0] API: NanoBanana - Uploading ${input.images.length} reference image(s)`)
-      for (const imageDataUri of input.images) {
-        const imageId = await uploadReferenceImage(apiKey, imageDataUri)
+      for (const img of input.images) {
+        let blob: Blob
+        if (typeof img === "string") {
+          // Fallback: if base64 data URI, convert to Blob
+          const match = img.match(/^data:(.+);base64,(.*)$/)
+          if (!match) {
+            throw new ProviderError("Invalid image data format", 400, "IMAGE_ERROR", false)
+          }
+          const [, mimeType, base64] = match
+          const buffer = Buffer.from(base64, "base64")
+          blob = new Blob([buffer], { type: mimeType })
+        } else {
+          blob = img as Blob
+        }
+        const imageId = await uploadReferenceImage(apiKey, blob)
         refImageIds.push(imageId)
       }
     }
@@ -141,68 +157,51 @@ export class NanoBananaProvider implements ImageProvider {
       requestBody.ref_image_ids = refImageIds
     }
 
-    console.log("[v0] API: NanoBanana - Calling Imaginer generate API")
-
-    const response = await fetch(`${IMAGINER_BASE_URL}/api/public/v1/generate`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+    const response = await fetchWithTimeout(
+      `${IMAGINER_BASE_URL}/api/public/v1/generate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
       },
-      body: JSON.stringify(requestBody),
-    })
-
-    console.log("[v0] API: NanoBanana - Generate response status:", response.status)
+      30000
+    )
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      console.error("[v0] API: NanoBanana - Generate error:", errorData)
+      const status = response.status
 
-      const isRetriable = response.status === 401 || response.status === 429 || response.status >= 500
-
-      if (response.status === 401) {
-        throw new ProviderError(
-          "Invalid Imaginer API key",
-          401,
-          "INVALID_API_KEY",
-          isRetriable
-        )
+      switch (status) {
+        case 401:
+          throw new ProviderError("Invalid Imaginer API key", 401, "INVALID_API_KEY", true)
+        case 429:
+          throw new ProviderError("Imaginer rate limit exceeded", 429, "QUOTA_EXCEEDED", true)
+        case 402:
+          throw new ProviderError(
+            "Imaginer payment required — insufficient balance",
+            402,
+            "QUOTA_EXCEEDED",
+            false
+          )
+        default:
+          if (status >= 500) {
+            throw new ProviderError(
+              `Imaginer server error: ${status}`,
+              status,
+              "SERVER_ERROR",
+              true
+            )
+          }
+          throw new ProviderError(
+            errorData.message || `Imaginer API error: ${status}`,
+            status,
+            "BAD_REQUEST",
+            false
+          )
       }
-
-      if (response.status === 429) {
-        throw new ProviderError(
-          "Imaginer rate limit exceeded",
-          429,
-          "QUOTA_EXCEEDED",
-          isRetriable
-        )
-      }
-
-      if (response.status === 402) {
-        throw new ProviderError(
-          "Imaginer payment required — insufficient balance",
-          402,
-          "QUOTA_EXCEEDED",
-          false
-        )
-      }
-
-      if (response.status >= 500) {
-        throw new ProviderError(
-          `Imaginer server error: ${response.status}`,
-          response.status,
-          "SERVER_ERROR",
-          isRetriable
-        )
-      }
-
-      // 400 errors - not retriable
-      throw new ProviderError(
-        errorData.error?.message || errorData.message || `Imaginer API error: ${response.status}`,
-        response.status,
-        "BAD_REQUEST",
-        false
-      )
     }
 
     const result = await response.json()
@@ -211,8 +210,6 @@ export class NanoBananaProvider implements ImageProvider {
     if (!generationId) {
       throw new ProviderError("No generation ID returned", 500, "NO_OUTPUT", true)
     }
-
-    console.log("[v0] API: NanoBanana - Generation ID:", generationId)
 
     // Poll for completion
     const imageUrl = await pollGenerationStatus(apiKey, generationId)

@@ -88,6 +88,9 @@ export const metadata: Metadata = {
   },
 }
 
+/** Force dynamic rendering so Clerk is never prerendered statically */
+export const dynamic = "force-dynamic"
+
 export default async function RootLayout({
   children,
 }: Readonly<{

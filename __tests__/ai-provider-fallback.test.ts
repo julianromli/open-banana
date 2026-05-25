@@ -1,3 +1,5 @@
+import { ProviderError } from "@/lib/ai-providers/types"
+
 describe("generateImageWithFallback", () => {
   const input = {
     prompt: "spongebob",
@@ -5,20 +7,41 @@ describe("generateImageWithFallback", () => {
     mode: "text-to-image" as const,
   }
 
+  // Snapshot env vars before tests and clear them so no real provider loads
+  let originalIMAGINER_KEY: string | undefined
+  let originalBYTEPLUS_KEY: string | undefined
+  let originalFAL_KEY: string | undefined
+
+  beforeAll(() => {
+    originalIMAGINER_KEY = process.env.IMAGINER_KEY
+    originalBYTEPLUS_KEY = process.env.BYTEPLUS_API_KEY
+    originalFAL_KEY = process.env.FAL_KEY
+  })
+
+  afterAll(() => {
+    process.env.IMAGINER_KEY = originalIMAGINER_KEY
+    process.env.BYTEPLUS_API_KEY = originalBYTEPLUS_KEY
+    process.env.FAL_KEY = originalFAL_KEY
+  })
+
   beforeEach(() => {
     jest.resetModules()
+    // Remove all real provider env keys so the test uses only mocks
+    delete process.env.IMAGINER_KEY
+    delete process.env.BYTEPLUS_API_KEY
+    delete process.env.FAL_KEY
+    // Tie primary provider to the one under test so sort order is predictable
     process.env.AI_PROVIDER = "FAL-AI"
   })
 
   afterEach(() => {
     delete process.env.AI_PROVIDER
-    delete process.env.FAL_KEY
-    delete process.env.BYTEPLUS_API_KEY
+    jest.dontMock("@/lib/ai-providers/fal-ai")
+    jest.dontMock("@/lib/ai-providers/byteplus")
+    jest.dontMock("@/lib/ai-providers/nano-banana")
   })
 
   test("falls back to BytePlus when FAL returns retriable 422", async () => {
-    const { ProviderError } = await import("@/lib/ai-providers/types")
-
     const falGenerateImage = jest
       .fn()
       .mockRejectedValue(new ProviderError("Validation mismatch", 422, "PROVIDER_VALIDATION_ERROR", true))
@@ -43,6 +66,14 @@ describe("generateImageWithFallback", () => {
       },
     }))
 
+    jest.doMock("@/lib/ai-providers/nano-banana", () => ({
+      nanoBananaProvider: {
+        name: "NANO_BANANA",
+        isConfigured: () => false,
+        generateImage: jest.fn(),
+      },
+    }))
+
     const { generateImageWithFallback } = await import("@/lib/ai-providers")
     const result = await generateImageWithFallback(input)
 
@@ -52,8 +83,6 @@ describe("generateImageWithFallback", () => {
   })
 
   test("does not fallback when FAL returns non-retriable 400", async () => {
-    const { ProviderError } = await import("@/lib/ai-providers/types")
-
     const falError = new ProviderError("Prompt blocked", 400, "BAD_REQUEST", false)
     const falGenerateImage = jest.fn().mockRejectedValue(falError)
     const byteGenerateImage = jest.fn()
@@ -74,6 +103,14 @@ describe("generateImageWithFallback", () => {
       },
     }))
 
+    jest.doMock("@/lib/ai-providers/nano-banana", () => ({
+      nanoBananaProvider: {
+        name: "NANO_BANANA",
+        isConfigured: () => false,
+        generateImage: jest.fn(),
+      },
+    }))
+
     const { generateImageWithFallback } = await import("@/lib/ai-providers")
 
     await expect(generateImageWithFallback(input)).rejects.toMatchObject({
@@ -87,4 +124,3 @@ describe("generateImageWithFallback", () => {
     expect(byteGenerateImage).not.toHaveBeenCalled()
   })
 })
-

@@ -5,6 +5,8 @@ import { generateImageWithFallback, ProviderError } from "@/lib/ai-providers"
 import { getUserMessageForErrorType } from "@/lib/generate-image-error"
 import { resolveRedisConfig } from "@/lib/redis-config"
 import type { ImageInput } from "@/lib/ai-providers/types"
+import { checkGenerationStatus, initGeneration, prepareImageInput } from "@/lib/ai-providers/nano-banana"
+import type { InitGenerationResult } from "@/lib/ai-providers/nano-banana"
 
 // User tier types and configuration
 type UserTier = "free" | "pro"
@@ -117,6 +119,181 @@ async function urlToBlob(url: string): Promise<Blob> {
   return await response.blob()
 }
 
+/* ------------------------------------------------------------------ */
+/*  SSE helpers                                                        */
+/* ------------------------------------------------------------------ */
+
+interface StreamGenerationParams {
+  prompt: string
+  aspectRatio: string
+  mode: string
+  images: ImageInput[]
+  quality: string
+  style: string
+  rateLimitInfo: Awaited<ReturnType<typeof checkRateLimit>> | null
+  bypassRateLimit: boolean
+  bypassRateLimitDev: boolean
+  userId: string | null
+  userTier: UserTier
+}
+
+function sseLine(payload: string): string {
+  return `data: ${payload}\n\n`
+}
+
+async function streamGeneration({
+  prompt,
+  aspectRatio,
+  mode,
+  images,
+  quality,
+  style,
+  rateLimitInfo,
+  bypassRateLimit,
+  bypassRateLimitDev,
+  userId,
+}: StreamGenerationParams): Promise<Response> {
+  const apiKey = process.env.IMAGINER_KEY
+  if (!apiKey) {
+    const payload = JSON.stringify({
+      type: "error",
+      errorType: "PROVIDER_NOT_CONFIGURED",
+      message: "Imaginer API key not configured",
+    })
+    return new Response(sseLine(payload), {
+      status: 500,
+      headers: { "Content-Type": "text/event-stream" },
+    })
+  }
+
+  let initResult: InitGenerationResult
+  try {
+    const requestBody = await prepareImageInput(apiKey, {
+      prompt,
+      aspectRatio: aspectRatio || "1:1",
+      mode: mode as "text-to-image" | "image-editing",
+      images: images.length > 0 ? images : undefined,
+      quality: (quality as "1K" | "2K" | "4K") || "1K",
+      style,
+    })
+    initResult = await initGeneration(apiKey, requestBody)
+  } catch (err) {
+    const providerErr =
+      err instanceof ProviderError
+        ? err
+        : new ProviderError(
+            err instanceof Error ? err.message : "Failed to init generation",
+            500,
+            "UNKNOWN_ERROR",
+            false
+          )
+    const payload = JSON.stringify({
+      type: "error",
+      errorType: providerErr.errorType,
+      message: getUserMessageForErrorType(providerErr.errorType, providerErr.message),
+    })
+    return new Response(sseLine(payload), {
+      status: providerErr.statusCode,
+      headers: { "Content-Type": "text/event-stream" },
+    })
+  }
+
+  const responseHeaders: Record<string, string> = {}
+  if (!bypassRateLimit && !bypassRateLimitDev && userId && rateLimitInfo) {
+    responseHeaders["X-RateLimit-Limit"] = rateLimitInfo.limit.toString()
+    responseHeaders["X-RateLimit-Remaining"] = rateLimitInfo.remaining.toString()
+    responseHeaders["X-RateLimit-Reset"] = rateLimitInfo.resetTime.toString()
+    responseHeaders["X-RateLimit-Tier"] = rateLimitInfo.tier
+  }
+
+  const encoder = new TextEncoder()
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const initPayload = JSON.stringify({ type: "init", generationId: initResult.generationId })
+      controller.enqueue(encoder.encode(sseLine(initPayload)))
+
+      const maxAttempts = 120
+      const pollInterval = 2000
+
+      try {
+        for (let i = 0; i < maxAttempts; i++) {
+          const status = await checkGenerationStatus(apiKey, initResult.generationId)
+
+          if (status.status === "success") {
+            const donePayload = JSON.stringify({
+              type: "done",
+              url: status.urls?.[0] ?? "",
+              prompt,
+            })
+            controller.enqueue(encoder.encode(sseLine(donePayload)))
+            controller.close()
+            return
+          }
+
+          if (status.status === "failed") {
+            const errorPayload = JSON.stringify({
+              type: "error",
+              errorType: "GENERATION_FAILED",
+              message: status.error || "Image generation failed",
+            })
+            controller.enqueue(encoder.encode(sseLine(errorPayload)))
+            controller.close()
+            return
+          }
+
+          const progressPayload = JSON.stringify({
+            type: "progress",
+            progress: status.progress ?? 0,
+            status: status.status,
+          })
+          controller.enqueue(encoder.encode(sseLine(progressPayload)))
+
+          await new Promise((resolve) => setTimeout(resolve, pollInterval))
+        }
+
+        const timeoutPayload = JSON.stringify({
+          type: "error",
+          errorType: "TIMEOUT",
+          message: "Generation timed out after 4 minutes",
+        })
+        controller.enqueue(encoder.encode(sseLine(timeoutPayload)))
+        controller.close()
+      } catch (err) {
+        const providerErr =
+          err instanceof ProviderError
+            ? err
+            : new ProviderError(
+                err instanceof Error ? err.message : "Unknown error during streaming",
+                500,
+                "UNKNOWN_ERROR",
+                false
+              )
+        const errorPayload = JSON.stringify({
+          type: "error",
+          errorType: providerErr.errorType,
+          message: getUserMessageForErrorType(providerErr.errorType, providerErr.message),
+        })
+        controller.enqueue(encoder.encode(sseLine(errorPayload)))
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      ...responseHeaders,
+    },
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/*  POST handler                                                       */
+/* ------------------------------------------------------------------ */
+
 export async function POST(request: NextRequest) {
   try {
     const userApiKey = request.headers.get("x-api-key")
@@ -128,7 +305,7 @@ export async function POST(request: NextRequest) {
 
     let userId: string | null = null
     let userTier: UserTier = "free"
-    let rateLimitInfo: { allowed: boolean; remaining: number; resetTime: number; tier: UserTier; limit: number } | null = null
+    let rateLimitInfo: Awaited<ReturnType<typeof checkRateLimit>> | null = null
 
     if (!bypassRateLimit && !bypassRateLimitDev) {
       const { userId: authUserId } = await auth()
@@ -220,6 +397,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const wantsSSE = (request.headers.get("accept") || "").includes("text/event-stream")
+
+    if (wantsSSE) {
+      return streamGeneration({
+        prompt,
+        aspectRatio: aspectRatio || "1:1",
+        mode,
+        images,
+        quality: (quality as "1K" | "2K" | "4K") || "1K",
+        style,
+        rateLimitInfo,
+        bypassRateLimit,
+        bypassRateLimitDev,
+        userId,
+        userTier,
+      })
+    }
+
+    // -------- Blocking non-SSE path --------
     const result = await generateImageWithFallback({
       prompt,
       aspectRatio: aspectRatio || "1:1",

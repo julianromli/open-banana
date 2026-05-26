@@ -945,31 +945,7 @@ export function ImageCombiner() {
         setSelectedGenerationId(generationId)
       }
 
-      // Start progress interval for this generation (arch ~20s to 98%)
-      const progressInterval = setInterval(() => {
-        setGenerations((prev) =>
-          prev.map((gen) => {
-            if (gen.id === generationId && gen.status === "loading") {
-              const next =
-                gen.progress >= 98
-                  ? 98
-                  : gen.progress >= 96
-                    ? gen.progress + 0.1
-                    : gen.progress >= 90
-                      ? gen.progress + 0.3
-                      : gen.progress >= 75
-                        ? gen.progress + 0.6
-                        : gen.progress >= 50
-                          ? gen.progress + 1.0
-                          : gen.progress + 1.5
-              return { ...gen, progress: Math.min(next, 98) }
-            }
-            return gen
-          }),
-        )
-      }, 200)
-
-      // Create the generation promise
+      // Create the generation promise with SSE streaming
       const generationPromise = (async () => {
         try {
           const formData = new FormData()
@@ -995,7 +971,9 @@ export function ImageCombiner() {
             }
           }
 
-          const headers: HeadersInit = {}
+          const headers: HeadersInit = {
+            Accept: "text/event-stream",
+          }
           if (userApiKey) {
             headers["x-api-key"] = userApiKey
           }
@@ -1009,11 +987,7 @@ export function ImageCombiner() {
 
           if (!response.ok) {
             const errorData = (await response.json().catch(() => ({}))) as GenerateImageErrorResponse
-
-            clearInterval(progressInterval)
-
             const userFriendlyMessage = errorData.message || "Something went wrong. Please try again."
-
             setGenerations((prev) =>
               prev.map((gen) =>
                 gen.id === generationId
@@ -1027,9 +1001,7 @@ export function ImageCombiner() {
                   : gen,
               ),
             )
-
             showToast(userFriendlyMessage, "error")
-
             if (response.status === 401 && errorData.redirectUrl) {
               setTimeout(() => {
                 router.push(errorData.redirectUrl as string)
@@ -1038,44 +1010,103 @@ export function ImageCombiner() {
             return
           }
 
-          const data = await response.json()
-
-          try {
-            await preloadImage(data.url)
-          } catch (error) {
-            console.error("[v0] Error preloading image:", error)
-            // Continue anyway if preload fails
+          if (!response.body) {
+            throw new Error("Response body is null")
           }
 
-          clearInterval(progressInterval)
+          const reader = response.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ""
 
-          setGenerations((prev) =>
-            prev.map((gen) => {
-              if (gen.id === generationId) {
-                // Only update if it's still in loading state (not cancelled)
-                if (gen.status === "loading") {
-                  return {
-                    ...gen,
-                    status: "complete" as const,
-                    progress: 100,
-                    imageUrl: data.url,
-                    abortController: undefined,
-                    thumbnailLoaded: true, // Mark as loaded immediately since we preloaded
+          let finalUrl = ""
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split("\n")
+            buffer = lines.pop() || ""
+
+            for (let line of lines) {
+              line = line.trim()
+              if (!line.startsWith("data: ")) continue
+              const payload = line.slice(6).trim()
+              if (!payload) continue
+
+              let event: { type: string; [key: string]: unknown }
+              try {
+                event = JSON.parse(payload)
+              } catch {
+                continue
+              }
+
+              if (event.type === "init") {
+                // generationId received — optionally store in state
+              } else if (event.type === "progress") {
+                const progress = typeof event.progress === "number" ? event.progress : 0
+                setGenerations((prev) =>
+                  prev.map((gen) =>
+                    gen.id === generationId && gen.status === "loading"
+                      ? { ...gen, progress }
+                      : gen,
+                  ),
+                )
+              } else if (event.type === "done") {
+                finalUrl = typeof event.url === "string" ? event.url : ""
+                if (finalUrl) {
+                  setGenerations((prev) =>
+                    prev.map((gen) =>
+                      gen.id === generationId && gen.status === "loading"
+                        ? {
+                            ...gen,
+                            status: "complete" as const,
+                            progress: 100,
+                            imageUrl: finalUrl,
+                            abortController: undefined,
+                            thumbnailLoaded: true,
+                          }
+                        : gen,
+                    ),
+                  )
+                  if (selectedGenerationId === generationId) {
+                    setImageLoaded(true)
+                  }
+                  try {
+                    await preloadImage(finalUrl)
+                  } catch (error) {
+                    console.error("[v0] Error preloading image:", error)
                   }
                 }
-                // If it was cancelled, keep the cancelled state
-                return gen
+                await reader.cancel().catch(() => {})
+                return
+              } else if (event.type === "error") {
+                const errorMessage = typeof event.message === "string" ? event.message : "Something went wrong."
+                setGenerations((prev) =>
+                  prev.map((gen) =>
+                    gen.id === generationId && gen.status === "loading"
+                      ? {
+                          ...gen,
+                          status: "error" as const,
+                          error: errorMessage,
+                          progress: 0,
+                          abortController: undefined,
+                        }
+                      : gen,
+                  ),
+                )
+                showToast(errorMessage, "error")
+                await reader.cancel().catch(() => {})
+                return
               }
-              return gen
-            }),
-          )
+            }
+          }
 
-          if (selectedGenerationId === generationId) {
-            setImageLoaded(true)
+          // If stream ended without done/error
+          if (!finalUrl) {
+            throw new Error("Stream closed unexpectedly")
           }
         } catch (error) {
-          clearInterval(progressInterval)
-
           if (error instanceof Error && error.name === "AbortError") {
             console.log("[v0] Generation fetch aborted for:", generationId)
             return
@@ -1088,7 +1119,6 @@ export function ImageCombiner() {
           if (error instanceof TypeError) {
             errorMessage = "Network issue detected. Please try again."
           } else if (error instanceof Error) {
-            // Parse common error patterns
             if (error.message.includes("timeout") || error.message.includes("network") || error.message.includes("fetch")) {
               errorMessage = "Network issue detected. Please try again."
             } else {

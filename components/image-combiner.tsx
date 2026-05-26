@@ -1618,6 +1618,25 @@ export function ImageCombiner() {
                         {numVariations}
                       </span>
                     </div>
+                    <div className="inline-flex md:hidden h-7 bg-black/50 border border-gray-600 px-1 py-0 flex-shrink-0 items-center gap-0.5 rounded-none">
+                      <button
+                        onClick={() => setNumVariations(n => Math.max(1, n - 1))}
+                        disabled={numVariations <= 1}
+                        className="w-5 h-5 flex items-center justify-center bg-transparent border border-gray-600 rounded text-white text-xs active:bg-white/20 disabled:opacity-30"
+                      >
+                        −
+                      </button>
+                      <span className="text-[11px] font-bold text-white w-4 text-center leading-none flex items-center">
+                        {numVariations}
+                      </span>
+                      <button
+                        onClick={() => setNumVariations(n => Math.min(4, n + 1))}
+                        disabled={numVariations >= 4}
+                        className="w-5 h-5 flex items-center justify-center bg-transparent border border-gray-600 rounded text-white text-xs active:bg-white/20 disabled:opacity-30"
+                      >
+                        +
+                      </button>
+                    </div>
                     <div className="inline-flex h-7 md:h-10 bg-black/50 border border-gray-600 px-2 py-0 md:px-4 md:py-0 flex-shrink-0 items-center rounded-none">
                       <span className="text-xs md:text-sm font-medium text-gray-300 whitespace-nowrap leading-none flex items-center">
                         {currentMode === "text-to-image" ? "Text-to-Image" : "Image-to-Image"}

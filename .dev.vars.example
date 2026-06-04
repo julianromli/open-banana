@@ -1,20 +1,22 @@
-# Copy to .env.local for `pnpm dev` / `pnpm build`
+# Copy to .dev.vars for local `pnpm preview` / wrangler dev (never commit .dev.vars)
 
 NEXT_PUBLIC_APP_URL=https://openbanana.fun
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
-# Optional FAPI proxy (omit when clerk.openbanana.fun DNS is verified)
 NEXT_PUBLIC_CLERK_PROXY_URL=
 
+# Redis (use one pair)
 KV_REST_API_URL=
 KV_REST_API_TOKEN=
 
+# Image providers (at least one)
 IMAGINER_KEY=
 BYTEPLUS_API_KEY=
 FAL_KEY=
 AI_PROVIDER=NANO_BANANA
 GEMINI_API_KEY=
 
+# Polar billing
 POLAR_ACCESS_TOKEN=
 POLAR_SERVER=sandbox
 POLAR_PRO_MONTHLY_PRODUCT_ID=

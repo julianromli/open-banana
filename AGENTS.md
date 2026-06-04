@@ -16,6 +16,11 @@ pnpm install                    # Install dependencies
 # Building
 pnpm build                      # Production build (validates all routes)
 
+# Cloudflare Workers (OpenNext)
+pnpm preview                    # Build + Wrangler preview (workerd runtime)
+pnpm deploy                     # Build + deploy to Cloudflare Workers
+# See docs/CLOUDFLARE_DEPLOY.md
+
 # Linting
 pnpm lint                       # Run ESLint
 
@@ -100,7 +105,7 @@ try {
 
 ### Environment Variables
 - **Location**: `.env.local` (gitignored)
-- **Template**: `.env.local.example`
+- **Template**: `.env.local.example`, `.dev.vars.example` (Cloudflare local)
 - **Required Variables**:
   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk auth (client-side)
   - `CLERK_SECRET_KEY` - Clerk auth (server-side)

@@ -6,6 +6,11 @@
 # next.js
 /.next/
 /out/
+.open-next/
+
+# cloudflare wrangler local secrets
+.dev.vars
+.wrangler/
 
 # production
 /build

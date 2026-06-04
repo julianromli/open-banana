@@ -2,16 +2,15 @@ import type React from "react"
 import type { Metadata } from "next"
 
 import { Suspense } from "react"
-import { Analytics } from "@vercel/analytics/react"
-import {
-  ClerkProvider,
-  SignInButton,
-  SignUpButton,
-  SignedIn,
-  SignedOut,
-  UserButton,
-} from "@clerk/nextjs"
+import { ClerkProvider } from "@clerk/nextjs"
+import { AuthHeader } from "@/components/auth-header"
+import { getClerkProxyUrl } from "@/lib/clerk-proxy-url"
+import { getSiteUrl } from "@/lib/site-url"
 import "./globals.css"
+
+const siteUrl = getSiteUrl()
+const clerkProxyUrl = getClerkProxyUrl()
+const clerkProviderProps = clerkProxyUrl ? { proxyUrl: clerkProxyUrl } : {}
 
 import { Inter, JetBrains_Mono, Libre_Baskerville as V0_Font_Libre_Baskerville, IBM_Plex_Mono as V0_Font_IBM_Plex_Mono, Lora as V0_Font_Lora } from 'next/font/google'
 
@@ -43,7 +42,7 @@ export const metadata: Metadata = {
   generator: "v0.app",
   applicationName: "Open Banana",
   referrer: "origin-when-cross-origin",
-  metadataBase: new URL("https://open-banana.vercel.app"),
+  metadataBase: new URL(siteUrl),
   alternates: {
     canonical: "/",
   },
@@ -97,7 +96,7 @@ export default async function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider {...clerkProviderProps}>
       <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
         <head>
           <script
@@ -108,27 +107,27 @@ export default async function RootLayout({
                 "@graph": [
                   {
                     "@type": "WebSite",
-                    "@id": "https://open-banana.vercel.app/#website",
-                    url: "https://open-banana.vercel.app/",
+                    "@id": `${siteUrl}/#website`,
+                    url: `${siteUrl}/`,
                     name: "Open Banana",
                     description: "Free AI Image Generator - Create and edit images with AI",
                     publisher: {
-                      "@id": "https://open-banana.vercel.app/#organization",
+                      "@id": `${siteUrl}/#organization`,
                     },
                     potentialAction: {
                       "@type": "SearchAction",
                       target: {
                         "@type": "EntryPoint",
-                        urlTemplate: "https://open-banana.vercel.app/?q={search_term_string}",
+                        urlTemplate: `${siteUrl}/?q={search_term_string}`,
                       },
                       "query-input": "required name=search_term_string",
                     },
                   },
                   {
                     "@type": "Organization",
-                    "@id": "https://open-banana.vercel.app/#organization",
+                    "@id": `${siteUrl}/#organization`,
                     name: "Open Banana",
-                    url: "https://open-banana.vercel.app/",
+                    url: `${siteUrl}/`,
                     logo: {
                       "@type": "ImageObject",
                       url: "https://elyql1q8be.ufs.sh/f/SidHyTM6vHFNkrTSPMxqrLXWoAOxHZEIn5u8KwidYCeQ4cFR",
@@ -155,15 +154,15 @@ export default async function RootLayout({
                   },
                   {
                     "@type": "WebPage",
-                    "@id": "https://open-banana.vercel.app/#webpage",
-                    url: "https://open-banana.vercel.app/",
+                    "@id": `${siteUrl}/#webpage`,
+                    url: `${siteUrl}/`,
                     name: "Free AI Image Generator | Open Banana",
                     description: "Generate and edit stunning images with AI. Sign in to generate.",
                     isPartOf: {
-                      "@id": "https://open-banana.vercel.app/#website",
+                      "@id": `${siteUrl}/#website`,
                     },
                     about: {
-                      "@id": "https://open-banana.vercel.app/#organization",
+                      "@id": `${siteUrl}/#organization`,
                     },
                     primaryImageOfPage: {
                       "@type": "ImageObject",
@@ -176,21 +175,8 @@ export default async function RootLayout({
           />
         </head>
         <body className={`font-mono antialiased ${_v0_fontVariables}`}>
-          <header className="flex justify-end items-center p-4 gap-4 h-16">
-            <SignedOut>
-              <SignInButton />
-              <SignUpButton>
-                <button className="bg-[#6c47ff] text-white rounded-full font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 cursor-pointer">
-                  Sign Up
-                </button>
-              </SignUpButton>
-            </SignedOut>
-            <SignedIn>
-              <UserButton />
-            </SignedIn>
-          </header>
+          <AuthHeader />
           <Suspense fallback={null}>{children}</Suspense>
-          <Analytics />
         </body>
       </html>
     </ClerkProvider>

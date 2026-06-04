@@ -1,3 +1,4 @@
+import { AuthGate } from "@/components/auth-gate"
 import { ImageCombiner } from "@/components/image-combiner"
 
 export default function Home() {
@@ -10,7 +11,9 @@ export default function Home() {
           combine multiple images. Free tier available, sign in to generate, instant results.
         </p>
       </div>
-      <ImageCombiner />
+      <AuthGate>
+        <ImageCombiner />
+      </AuthGate>
     </main>
   )
 }
